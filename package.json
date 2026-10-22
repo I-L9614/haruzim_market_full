@@ -1,0 +1,15 @@
+{
+  "name": "haruzim-market",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "backend",
+    "customer-web",
+    "admin-desktop"
+  ],
+  "scripts": {
+    "dev:customer": "npm --workspace customer-web run dev",
+    "dev:admin": "npm --workspace admin-desktop run dev",
+    "dev:backend": "npm --workspace backend run dev"
+  }
+}

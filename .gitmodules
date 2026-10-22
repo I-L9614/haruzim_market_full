@@ -1,0 +1,9 @@
+[submodule "haruzim-backend"]
+	path = haruzim-backend
+	url = https://github.com/I-L9614/haruzim-backend.git
+[submodule "haruzim-website"]
+	path = haruzim-website
+	url = https://github.com/I-L9614/haruzim-website.git
+[submodule "haruzim-market-admin"]
+	path = haruzim-market-admin
+	url = https://github.com/I-L9614/haruzim-market-admin.git
