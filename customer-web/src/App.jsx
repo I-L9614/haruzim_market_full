@@ -169,7 +169,12 @@ function App() {
     } catch { /* keep the signed-in session in memory if browser storage is unavailable */ }
     setAuthToken(token);
     setAccount(user);
-    setCustomer((previous) => ({ ...previous, name: user.name || previous.name, email: user.email || previous.email }));
+    setCustomer((previous) => ({
+      ...previous,
+      name: user.name || previous.name,
+      phone: user.phone || previous.phone,
+      email: user.email || previous.email
+    }));
     setShowAuthModal(false);
   }, []);
 

@@ -162,16 +162,29 @@ async function checkoutOrder(req, res, next) {
       }
 
       const subtotal = orderItems.reduce((sum, item) => sum + item.total, 0);
-      const user = await User.findOneAndUpdate(
-        req.customerUser ? { _id: req.customerUser._id } : { phone: normalizedCustomer.phone },
-        {
-          $set: req.customerUser
-            ? { name: normalizedCustomer.name, phone: normalizedCustomer.phone }
-            : { name: normalizedCustomer.name },
-          $addToSet: { addresses: normalizedCustomer.address }
-        },
-        { upsert: true, new: true, session }
-      );
+      const userUpdate = {
+        $set: { name: normalizedCustomer.name },
+        $addToSet: { addresses: normalizedCustomer.address }
+      };
+      let user;
+
+      if (req.customerUser) {
+        const phoneOwner = await User.findOne({ phone: normalizedCustomer.phone }).select('_id').session(session);
+        if (!phoneOwner || String(phoneOwner._id) === String(req.customerUser._id)) {
+          userUpdate.$set.phone = normalizedCustomer.phone;
+        }
+        user = await User.findOneAndUpdate(
+          { _id: req.customerUser._id },
+          userUpdate,
+          { new: true, session }
+        );
+      } else {
+        user = await User.findOneAndUpdate(
+          { phone: normalizedCustomer.phone },
+          userUpdate,
+          { upsert: true, new: true, session }
+        );
+      }
 
       [createdOrder] = await Order.create([{
         user: user._id,

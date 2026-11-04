@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Search, X } from 'lucide-react';
 
 function formatPrice(value) {
   return Number(value || 0).toFixed(2);
@@ -15,11 +15,17 @@ export default function Catalog({
   isShabbatBlocked = false
 }) {
   const [quantities, setQuantities] = useState({});
-  const visibleProducts = !products.length
-    ? []
-    : activeCategory === 'all'
-      ? products
-      : products.filter((product) => String(product.category?._id || product.category) === String(activeCategory));
+  const [searchQuery, setSearchQuery] = useState('');
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase('he-IL');
+  const visibleProducts = products.filter((product) => {
+    const categoryId = String(product.category?._id || product.category);
+    const categoryName = product.category?.name || categories.find((category) => String(category._id) === categoryId)?.name || '';
+    const matchesCategory = activeCategory === 'all' || categoryId === String(activeCategory);
+    const matchesQuery = !normalizedQuery
+      || String(product.name || '').toLocaleLowerCase('he-IL').includes(normalizedQuery)
+      || String(categoryName).toLocaleLowerCase('he-IL').includes(normalizedQuery);
+    return matchesCategory && matchesQuery;
+  });
 
   return (
     <section className="catalog-panel">
@@ -27,6 +33,18 @@ export default function Catalog({
         <h2>קטלוג</h2>
         <span>{visibleProducts.length} מוצרים</span>
       </div>
+
+      <label className="catalog-search">
+        <Search size={18} aria-hidden="true" />
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="חיפוש לפי שם מוצר או קטגוריה"
+          aria-label="חיפוש לפי שם מוצר או קטגוריה"
+        />
+        {searchQuery && <button type="button" onClick={() => setSearchQuery('')} aria-label="ניקוי החיפוש"><X size={16} /></button>}
+      </label>
 
       <div className="category-strip">
         <button className={activeCategory === 'all' ? 'chip active' : 'chip'} onClick={() => setActiveCategory('all')}>

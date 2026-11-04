@@ -11,7 +11,7 @@ function makeCustomerToken(user) {
 function customerResponse(user) {
   return {
     token: makeCustomerToken(user),
-    user: { id: String(user._id), name: user.name, email: user.email }
+    user: { id: String(user._id), name: user.name, email: user.email, phone: user.phone || '' }
   };
 }
 
@@ -19,15 +19,19 @@ async function registerCustomer(req, res, next) {
   try {
     const name = String(req.body?.name || '').trim();
     const email = String(req.body?.email || '').trim().toLowerCase();
+    const phone = String(req.body?.phone || '').replace(/[\s()-]/g, '');
     const password = String(req.body?.password || '');
-    if (name.length < 2 || name.length > 120 || !emailPattern.test(email) || password.length < 12 || password.length > 128) {
-      return res.status(400).json({ error: 'INVALID_REGISTRATION', message: 'יש להזין שם, אימייל תקין וסיסמה באורך 12 תווים לפחות.' });
+    if (name.length < 2 || name.length > 120 || !emailPattern.test(email) || !/^\+?[0-9]{9,15}$/.test(phone) || password.length < 12 || password.length > 128) {
+      return res.status(400).json({ error: 'INVALID_REGISTRATION', message: 'יש להזין שם, טלפון תקין, אימייל תקין וסיסמה באורך 12 תווים לפחות.' });
     }
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await User.create({ name, email, passwordHash, role: 'customer' });
+    const user = await User.create({ name, email, phone, passwordHash, role: 'customer' });
     return res.status(201).json(customerResponse(user));
   } catch (error) {
-    if (error.code === 11000) return res.status(409).json({ error: 'EMAIL_IN_USE', message: 'כבר קיים חשבון עם כתובת האימייל הזו.' });
+    if (error.code === 11000) {
+      if (error.keyPattern?.phone) return res.status(409).json({ error: 'PHONE_IN_USE', message: 'מספר הטלפון כבר משויך לחשבון קיים.' });
+      return res.status(409).json({ error: 'EMAIL_IN_USE', message: 'כבר קיים חשבון עם כתובת האימייל הזו.' });
+    }
     return next(error);
   }
 }

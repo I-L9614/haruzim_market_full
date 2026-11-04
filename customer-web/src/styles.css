@@ -153,6 +153,44 @@ button:active, .chip:active, .primary-btn:active, .secondary-btn:active, .ghost-
   margin: 22px 0;
 }
 
+.catalog-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 10px 12px;
+  border: 1px solid rgba(40,84,59,.2);
+  border-radius: 10px;
+  color: var(--muted);
+  background: white;
+}
+
+.catalog-search:focus-within {
+  border-color: var(--brand-deep);
+  box-shadow: 0 0 0 3px rgba(40,84,59,.1);
+}
+
+.catalog-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  outline: 0;
+  color: var(--olive-900);
+  background: transparent;
+  font: inherit;
+}
+
+.catalog-search button {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
 .chip {
   padding: 10px 18px;
 }

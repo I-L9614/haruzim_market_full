@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { LockKeyhole, Mail, UserRound, X } from 'lucide-react';
+import { LockKeyhole, Mail, Phone, UserRound, X } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : '');
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 export default function CustomerAuthModal({ onClose, onAuthenticated }) {
   const [mode, setMode] = useState('login');
-  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [form, setForm] = useState({ name: '', phone: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const googleButton = useRef(null);
@@ -102,6 +102,7 @@ export default function CustomerAuthModal({ onClose, onAuthenticated }) {
 
         <form className="auth-form" onSubmit={submit}>
           {mode === 'register' && <label><span><UserRound size={15} /> שם מלא</span><input required minLength="2" maxLength="120" autoComplete="name" value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} /></label>}
+          {mode === 'register' && <label><span><Phone size={15} /> טלפון</span><input required type="tel" autoComplete="tel" inputMode="tel" value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} placeholder="050-0000000" /></label>}
           <label><span><Mail size={15} /> אימייל</span><input required type="email" autoComplete="email" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} /></label>
           <label><span><LockKeyhole size={15} /> סיסמה</span><input required type="password" minLength={mode === 'register' ? 12 : 1} maxLength="128" autoComplete={mode === 'register' ? 'new-password' : 'current-password'} value={form.password} onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))} />{mode === 'register' && <small>לפחות 12 תווים</small>}</label>
           {error && <p className="auth-error" role="alert">{error}</p>}
