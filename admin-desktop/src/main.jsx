@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { connectRealtime } from './realtime-client';
+import { apiFetch, apiErrorMessage, parseJson } from './apiError';
 import { BellRing, DollarSign, ShoppingBag, PackageCheck, TrendingUp, ShieldCheck, LogIn, Phone, MapPin, RefreshCw, Users, UserPlus, UserMinus } from 'lucide-react';
 import './styles.css';
 import ErrorBoundary from './ErrorBoundary';
@@ -106,24 +107,24 @@ function App() {
     socket.on('orderUpdated', handleOrderUpdated);
 
     const fetchStats = async () => {
-      const response = await fetch(`${API_BASE}/admin/stats`, {
+      const response = await apiFetch(`${API_BASE}/admin/stats`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.status === 401 || response.status === 403) throw new Error('פג תוקף ההתחברות. יש להתחבר מחדש.');
       if (!response.ok) throw new Error('לא ניתן לטעון נתוני דוח.');
       if (response.ok) {
-        const data = await response.json();
+        const data = await parseJson(response);
         setStats(data);
       }
     };
 
     const fetchOrders = async (cursor = null, append = false, preserveExisting = false) => {
       const query = cursor ? `?before=${encodeURIComponent(cursor.createdAt)}&id=${encodeURIComponent(cursor.id)}` : '';
-      const response = await fetch(`${API_BASE}/admin/orders${query}`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await apiFetch(`${API_BASE}/admin/orders${query}`, { headers: { Authorization: `Bearer ${token}` } });
       if (response.status === 401 || response.status === 403) throw new Error('פג תוקף ההתחברות. יש להתחבר מחדש.');
       if (!response.ok) throw new Error('לא ניתן לטעון הזמנות.');
       if (response.ok) {
-        const data = await response.json();
+        const data = await parseJson(response);
         const incoming = data.orders || [];
         setOrders((previous) => {
           if (!append && !preserveExisting) return incoming;
@@ -136,31 +137,31 @@ function App() {
     };
 
     const fetchProducts = async () => {
-      const response = await fetch(`${API_BASE}/admin/products`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await apiFetch(`${API_BASE}/admin/products`, { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error('לא ניתן לטעון את המלאי.');
-      const data = await response.json();
+      const data = await parseJson(response);
       setProducts(data.products || []);
       setCategories(data.categories || []);
     };
 
     const fetchFeaturedSelection = async () => {
-      const response = await fetch(`${API_BASE}/admin/catalog/featured-product`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await apiFetch(`${API_BASE}/admin/catalog/featured-product`, { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error('לא ניתן לטעון את בחירת המוצר המובלט.');
-      const data = await response.json();
+      const data = await parseJson(response);
       setFeaturedProductId(data.productId || '');
     };
 
     const fetchManagers = async () => {
-      const response = await fetch(`${API_BASE}/admin/managers`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await apiFetch(`${API_BASE}/admin/managers`, { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error('לא ניתן לטעון את רשימת המנהלים.');
-      const data = await response.json();
+      const data = await parseJson(response);
       setManagers(data.managers || []);
     };
 
     const fetchShabbatStatus = async () => {
-      const response = await fetch(`${API_BASE}/shabbat/status`);
+      const response = await apiFetch(`${API_BASE}/shabbat/status`);
       if (!response.ok) throw new Error('לא ניתן לבדוק את מצב פעילות החנות.');
-      const data = await response.json();
+      const data = await parseJson(response);
       setIsShabbatClosed(Boolean(data.isShabbat));
     };
 
@@ -204,11 +205,11 @@ function App() {
     if (API_CONFIGURATION_ERROR) { setLoginError(API_CONFIGURATION_ERROR); return; }
     setLoginError('');
     try {
-      const response = await fetch(`${API_BASE}/auth/admin/login`, {
+      const response = await apiFetch(`${API_BASE}/auth/admin/login`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(login)
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || 'ההתחברות נכשלה.');
+      const data = await parseJson(response);
+      if (!response.ok) throw new Error(apiErrorMessage(response, data, 'ההתחברות נכשלה.'));
       localStorage.setItem('haruzim-admin-token', data.token);
       setToken(data.token);
       setLogin({ email: '', password: '' });
@@ -224,13 +225,13 @@ function App() {
     setManagerNotice('');
     setManagerBusy(true);
     try {
-      const response = await fetch(`${API_BASE}/admin/managers`, {
+      const response = await apiFetch(`${API_BASE}/admin/managers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(managerForm)
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן ליצור את החשבון.');
+      const data = await parseJson(response);
+      if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן ליצור את החשבון.'));
       setManagers((previous) => [data.manager, ...previous]);
       setManagerForm({ name: '', email: '', password: '' });
       setManagerNotice(`החשבון של ${data.manager.name} נוצר. יש למסור לו את פרטי הכניסה באופן מאובטח.`);
@@ -248,11 +249,11 @@ function App() {
     setManagerNotice('');
     setManagerBusy(true);
     try {
-      const response = await fetch(`${API_BASE}/admin/managers/${manager._id}`, {
+      const response = await apiFetch(`${API_BASE}/admin/managers/${manager._id}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן להסיר את הגישה.');
+      const data = await parseJson(response);
+      if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן להסיר את הגישה.'));
       setManagers((previous) => previous.map((item) => String(item._id) === String(manager._id) ? data.manager : item));
       setManagerNotice(`הגישה של ${manager.name} הוסרה.`);
     } catch (removeError) {
@@ -299,13 +300,13 @@ function App() {
     };
     try {
       const editing = Boolean(editingProductId);
-      const response = await fetch(editing ? `${API_BASE}/admin/products/${editingProductId}` : `${API_BASE}/admin/products`, {
+      const response = await apiFetch(editing ? `${API_BASE}/admin/products/${editingProductId}` : `${API_BASE}/admin/products`, {
         method: editing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload)
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן לשמור את המוצר.');
+      const data = await parseJson(response);
+      if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן לשמור את המוצר.'));
       setProducts((previous) => editing
         ? previous.map((item) => String(item._id) === String(data.product._id) ? data.product : item)
         : [...previous, data.product].sort((a, b) => a.name.localeCompare(b.name, 'he')));
@@ -323,7 +324,7 @@ function App() {
     setProductError('');
     setProductBusy(true);
     try {
-      const response = await fetch(`${API_BASE}/admin/products/${product._id}`, {
+      const response = await apiFetch(`${API_BASE}/admin/products/${product._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -338,8 +339,8 @@ function App() {
           active
         })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן לשנות את זמינות המוצר.');
+      const data = await parseJson(response);
+      if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן לשנות את זמינות המוצר.'));
       setProducts((previous) => previous.map((item) => String(item._id) === String(data.product._id) ? data.product : item));
     } catch (availabilityError) {
       setProductError(availabilityError.message || 'שגיאה בעדכון הזמינות.');
@@ -368,7 +369,7 @@ function App() {
     setProductError('');
     setSavingInlineProductId(productId);
     try {
-      const response = await fetch(`${API_BASE}/admin/products/${productId}`, {
+      const response = await apiFetch(`${API_BASE}/admin/products/${productId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -383,8 +384,8 @@ function App() {
           active: product.active !== false
         })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן לעדכן את המחיר והמלאי.');
+      const data = await parseJson(response);
+      if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן לעדכן את המחיר והמלאי.'));
       setProducts((previous) => previous.map((item) => String(item._id) === String(data.product._id) ? data.product : item));
       setInlineProductDrafts((previous) => {
         const next = { ...previous };
@@ -404,11 +405,11 @@ function App() {
     setProductError('');
     setProductBusy(true);
     try {
-      const response = await fetch(`${API_BASE}/admin/products/${product._id}`, {
+      const response = await apiFetch(`${API_BASE}/admin/products/${product._id}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן להסיר את המוצר.');
+      const data = await parseJson(response);
+      if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן להסיר את המוצר.'));
       setProducts((previous) => previous.map((item) => String(item._id) === String(product._id) ? data.product : item));
     } catch (deleteError) {
       setProductError(deleteError.message || 'שגיאה בהסרת המוצר.');
@@ -423,13 +424,13 @@ function App() {
     setCategoryNotice('');
     setProductError('');
     try {
-      const response = await fetch(`${API_BASE}/admin/catalog/categories`, {
+      const response = await apiFetch(`${API_BASE}/admin/catalog/categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ name: categoryName })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן ליצור את הקטגוריה.');
+      const data = await parseJson(response);
+      if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן ליצור את הקטגוריה.'));
       setCategories((previous) => [...previous, data.category].sort((a, b) => a.name.localeCompare(b.name, 'he')));
       setCategoryName('');
       setCategoryNotice(`הקטגוריה ״${data.category.name}״ נוספה וניתן לשייך אליה מוצרים.`);
@@ -444,13 +445,13 @@ function App() {
     setProductError('');
     setProductBusy(true);
     try {
-      const response = await fetch(`${API_BASE}/admin/catalog/featured-product`, {
+      const response = await apiFetch(`${API_BASE}/admin/catalog/featured-product`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ productId: featuredProductId })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן לשמור את המוצר המובלט.');
+      const data = await parseJson(response);
+      if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן לשמור את המוצר המובלט.'));
       setFeaturedProductId(data.productId || '');
       setFeaturedNotice('המוצר שיוצג בראש אתר הלקוחות עודכן.');
     } catch (error) {
@@ -470,16 +471,16 @@ function App() {
       fulfillmentStatus: changes.fulfillmentStatus || getFulfillmentStatus(order)
     };
     try {
-      const response = await fetch(`${API_BASE}/admin/orders/${order._id}/status`, {
+      const response = await apiFetch(`${API_BASE}/admin/orders/${order._id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(updated)
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || 'עדכון ההזמנה נכשל.');
+      const data = await parseJson(response);
+      if (!response.ok) throw new Error(apiErrorMessage(response, data, 'עדכון ההזמנה נכשל.'));
       setOrders((prev) => prev.map((item) => String(item._id) === String(order._id) ? data.order : item));
-      const statsResponse = await fetch(`${API_BASE}/admin/stats`, { headers: { Authorization: `Bearer ${token}` } });
-      if (statsResponse.ok) setStats(await statsResponse.json());
+      const statsResponse = await apiFetch(`${API_BASE}/admin/stats`, { headers: { Authorization: `Bearer ${token}` } });
+      if (statsResponse.ok) setStats(await parseJson(statsResponse));
     } catch (updateError) {
       setError(updateError.message || 'לא ניתן לעדכן את ההזמנה.');
     } finally {
@@ -497,11 +498,11 @@ function App() {
   const loadMoreOrders = async () => {
     if (!nextOrderCursor) return;
     try {
-      await fetch(`${API_BASE}/admin/orders?before=${encodeURIComponent(nextOrderCursor.createdAt)}&id=${encodeURIComponent(nextOrderCursor.id)}`, {
+      await apiFetch(`${API_BASE}/admin/orders?before=${encodeURIComponent(nextOrderCursor.createdAt)}&id=${encodeURIComponent(nextOrderCursor.id)}`, {
         headers: { Authorization: `Bearer ${token}` }
       }).then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן לטעון את היסטוריית ההזמנות.');
+        const data = await parseJson(response);
+        if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן לטעון את היסטוריית ההזמנות.'));
         setOrders((previous) => [...previous, ...(data.orders || []).filter((order) => !previous.some((item) => String(item._id) === String(order._id)))]);
         setNextOrderCursor(data.nextCursor || null);
       });
