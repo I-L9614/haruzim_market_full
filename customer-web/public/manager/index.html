@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>ניהול הזמנות | חרוזים מרקט</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+  body { background: #f0f4ec; color: #22331f; min-height: 100vh; padding-bottom: 24px; }
+  header { background: #fff; padding: 14px 16px; box-shadow: 0 2px 10px #23472e14; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  header h1 { font-size: 1.05rem; color: #2e6b3f; }
+  header .who { font-size: .75rem; color: #5c6b52; }
+  button { font-family: inherit; cursor: pointer; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 14px; }
+  .card { background: #fff; border-radius: 16px; padding: 16px; box-shadow: 0 4px 14px #23472e10; margin-bottom: 12px; }
+  .login-card { max-width: 400px; margin: 60px auto; }
+  .login-card h2 { font-size: 1.2rem; margin-bottom: 6px; }
+  .login-card p { color: #5c6b52; font-size: .85rem; margin-bottom: 16px; }
+  label { display: block; font-size: .85rem; font-weight: 700; margin-bottom: 12px; color: #22331f; }
+  input { display: block; width: 100%; margin-top: 5px; padding: 11px 12px; border: 1.5px solid #28543b2e; border-radius: 10px; font-size: 1rem; }
+  .btn { width: 100%; min-height: 46px; border: 0; border-radius: 12px; background: #2e6b3f; color: #fff; font-size: 1rem; font-weight: 800; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn-outline { background: #f1f7ec; color: #2e6b3f; border: 1.5px solid #28543b2e; }
+  .err { background: #fdeaea; color: #8f1f1f; border-radius: 10px; padding: 10px 12px; font-size: .85rem; margin-bottom: 12px; }
+  .banner { background: #fdf0dc; color: #8a5a00; border-radius: 12px; padding: 12px 14px; font-weight: 800; font-size: .9rem; margin-bottom: 12px; display: none; }
+  .banner.show { display: block; }
+  .shabbat { background: #eef1f6; color: #4a5468; border-radius: 12px; padding: 10px 14px; font-size: .82rem; margin-bottom: 12px; display: none; }
+  .shabbat.show { display: block; }
+  .order { cursor: default; }
+  .order-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .order-top strong { font-size: .98rem; }
+  .order-meta { color: #77856b; font-size: .76rem; margin-top: 3px; }
+  .order-total { font-weight: 800; color: #22331f; white-space: nowrap; }
+  .badges { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .badge { font-size: .72rem; font-weight: 800; border-radius: 999px; padding: 3px 10px; background: #fdf0dc; color: #8a5a00; }
+  .badge.paid { background: #e3f2e4; color: #2e6b3f; }
+  .badge.shipped { background: #e3ecf8; color: #28518a; }
+  .badge.cancelled { background: #fdeaea; color: #8f1f1f; }
+  .details { display: none; margin-top: 12px; border-top: 1px solid #eef2e9; padding-top: 12px; }
+  .order.open .details { display: block; }
+  .details ul { list-style: none; margin-bottom: 10px; }
+  .details li { font-size: .86rem; padding: 4px 0; color: #40513a; }
+  .contact { font-size: .84rem; color: #40513a; line-height: 1.7; margin-bottom: 10px; }
+  .contact a { color: #2e6b3f; font-weight: 700; text-decoration: none; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+  .actions .btn { min-height: 44px; font-size: .88rem; }
+  .actions .danger { background: #fff; color: #8f1f1f; border: 1.5px solid #8f1f1f33; grid-column: 1 / -1; }
+  .toggle { font-size: .78rem; color: #2e6b3f; background: none; border: 0; font-weight: 800; margin-top: 8px; }
+  .empty { text-align: center; color: #77856b; padding: 40px 0; font-size: .9rem; }
+  .refresh-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .refresh-row h2 { font-size: 1rem; }
+  .icon-btn { background: #fff; border: 1.5px solid #28543b2e; color: #2e6b3f; border-radius: 10px; padding: 7px 14px; font-weight: 800; font-size: .8rem; }
+  .logout { background: none; border: 0; color: #77856b; font-size: .75rem; text-decoration: underline; }
+  .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #c3ccb9; margin-inline-end: 5px; }
+  .live-dot.on { background: #2e6b3f; }
+  .live { font-size: .72rem; color: #77856b; }
+</style>
+</head>
+<body>
+<header>
+  <h1>חרוזים מרקט · ניהול הזמנות</h1>
+  <span class="who" id="who"></span>
+</header>
+<div class="wrap">
+  <div class="banner" id="banner" role="status"></div>
+  <div class="shabbat" id="shabbat"></div>
+  <div class="err" id="err" style="display:none" role="alert"></div>
+
+  <div class="card login-card" id="loginView">
+    <h2>כניסת מנהל</h2>
+    <p>גישה להזמנות החנות מהטלפון. פרטי ההתחברות זהים לתוכנת הניהול במחשב.</p>
+    <form id="loginForm">
+      <label>אימייל<input type="email" id="email" required autocomplete="username" inputmode="email"></label>
+      <label>סיסמה<input type="password" id="password" required autocomplete="current-password"></label>
+      <button class="btn" type="submit" id="loginBtn">התחברות</button>
+    </form>
+  </div>
+
+  <div id="ordersView" style="display:none">
+    <div class="refresh-row">
+      <h2>הזמנות <span class="live"><span class="live-dot" id="liveDot"></span>עדכון חי</span></h2>
+      <div>
+        <button class="icon-btn" id="refreshBtn" type="button">רענון</button>
+        <button class="logout" id="logoutBtn" type="button">התנתקות</button>
+      </div>
+    </div>
+    <div id="orders"></div>
+  </div>
+</div>
+<script>
+const API = 'https://haruzim-api.haruzim-probe.workers.dev';
+const $ = (id) => document.getElementById(id);
+let token = localStorage.getItem('hmgr_token') || '';
+let adminName = localStorage.getItem('hmgr_name') || '';
+let shabbatClosed = false;
+let orders = [];
+let ws = null;
+
+const CODE_HE = {
+  INVALID_CREDENTIALS: 'אימייל או סיסמה שגויים.', AUTH_REQUIRED: 'יש להתחבר מחדש.',
+  INVALID_TOKEN: 'החיבור פג. התחברו מחדש.', ACCOUNT_DISABLED: 'החשבון אינו פעיל. יש לפנות למנהל הראשי.',
+  FORBIDDEN: 'אין הרשאה לפעולה זו.', OWNER_REQUIRED: 'פעולה זו זמינה למנהל הראשי בלבד.',
+  INVALID_ORDER_STATUS: 'סטטוס ההזמנה אינו תקין.', ORDER_TRANSITION_NOT_ALLOWED: 'לא ניתן לשנות את ההזמנה לסטטוס הזה.',
+  ORDER_ALREADY_DISPATCHED: 'ההזמנה כבר יצאה ולא ניתן לבטלה.', PAID_ORDER_REQUIRES_MANUAL_REFUND: 'ההזמנה שולמה. ביטול דורש החזר ידני.',
+  INVALID_CURSOR: 'לא ניתן לטעון את ההיסטוריה כרגע.'
+};
+function hebrewError(data, res, fallback) {
+  if (res && res.status === 503) return (data && data.message) || 'האתר סגור לפעילות כרגע.';
+  if (data && data.message) return data.message;
+  if (data && CODE_HE[data.error]) return CODE_HE[data.error];
+  return fallback;
+}
+async function api(path, opts = {}) {
+  let res;
+  try {
+    res = await fetch(API + '/api' + path, {
+      method: opts.method || 'GET',
+      headers: Object.assign({ 'Authorization': 'Bearer ' + token }, opts.body ? { 'Content-Type': 'application/json' } : {}),
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
+  } catch { throw new Error('אין חיבור לשרת. בדקו את האינטרנט ונסו שוב.'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 401) { logout(); }
+    throw new Error(hebrewError(data, res, 'הפעולה נכשלה. נסו שוב.'));
+  }
+  return data;
+}
+function showErr(msg) { const e = $('err'); e.textContent = msg; e.style.display = msg ? 'block' : 'none'; if (msg) setTimeout(() => { e.style.display = 'none'; }, 7000); }
+function getFulfillment(o) { return (o.fulfillment && o.fulfillment.status) || (['shipped','delivered','cancelled'].includes(o.status) ? o.status : 'pending'); }
+const FUL_HE = { pending: 'ממתין למשלוח', shipped: 'נשלח', delivered: 'נמסר', cancelled: 'בוטל' };
+
+async function loadShabbat() {
+  try {
+    const res = await fetch(API + '/api/shabbat/status');
+    const data = await res.json();
+    shabbatClosed = !!(data.closed || data.blocked);
+  } catch { shabbatClosed = false; }
+  const s = $('shabbat');
+  if (shabbatClosed) { s.textContent = 'החנות סגורה כרגע (שבת/חג). צפייה אפשרית, עדכון סטטוסים יחזור במוצאי השבת.'; s.classList.add('show'); }
+  else s.classList.remove('show');
+}
+
+function renderOrders() {
+  const box = $('orders');
+  if (!orders.length) { box.innerHTML = '<div class="card empty">אין הזמנות להצגה.</div>'; return; }
+  box.innerHTML = orders.map((o, i) => {
+    const ful = getFulfillment(o);
+    const paid = o.payment && o.payment.status === 'paid';
+    const id8 = String(o._id).slice(-8);
+    const when = new Date(o.createdAt).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const c = o.customer || {};
+    const addr = [c.address && c.address.street, c.address && c.address.apartment, c.address && c.address.city].filter(Boolean).join(', ');
+    const items = (o.items || []).map(it => '<li>' + it.name + ' × ' + it.quantity + ' ' + (it.unitType === 'weight' ? 'ק״ג' : 'יח׳') + ' · ' + Number(it.total || it.unitPrice * it.quantity || 0).toFixed(2) + '₪</li>').join('');
+    const canPay = !shabbatClosed && !paid && ful !== 'cancelled';
+    const canShip = !shabbatClosed && ful === 'pending';
+    const canDeliver = !shabbatClosed && ful === 'shipped';
+    const canCancel = !shabbatClosed && ful === 'pending' && !paid;
+    return '<div class="card order" data-i="' + i + '">' +
+      '<div class="order-top"><div><strong>' + (c.name || 'לקוח') + '</strong><div class="order-meta">מס׳ ' + id8 + ' · ' + when + '</div></div>' +
+      '<span class="order-total">' + Number(o.total || 0).toFixed(2) + '₪</span></div>' +
+      '<div class="badges"><span class="badge ' + (paid ? 'paid' : '') + '">' + (paid ? 'שולם' : 'ממתין לתשלום') + '</span>' +
+      '<span class="badge ' + (ful === 'shipped' || ful === 'delivered' ? 'shipped' : ful === 'cancelled' ? 'cancelled' : '') + '">' + FUL_HE[ful] + '</span></div>' +
+      '<button class="toggle" type="button">פרטים והזמנה ▾</button>' +
+      '<div class="details">' +
+      '<div class="contact">' + (c.phone ? 'טלפון: <a href="tel:' + c.phone + '">' + c.phone + '</a><br>' : '') + (addr ? 'כתובת: ' + addr + '<br>' : '') + (c.notes ? 'הערה: ' + c.notes : '') + '</div>' +
+      '<ul>' + items + '</ul>' +
+      '<div class="actions">' +
+      '<button class="btn" data-act="paid" ' + (canPay ? '' : 'disabled') + '>' + (paid ? 'שולם ✓' : 'סמן כשולם') + '</button>' +
+      '<button class="btn" data-act="shipped" ' + (canShip ? '' : 'disabled') + '>' + (ful === 'shipped' || ful === 'delivered' ? 'נשלח ✓' : 'סמן כנשלח') + '</button>' +
+      '<button class="btn" data-act="delivered" ' + (canDeliver ? '' : 'disabled') + '>' + (ful === 'delivered' ? 'נמסר ✓' : 'סמן כנמסר') + '</button>' +
+      (canCancel || ful === 'pending' ? '<button class="btn danger" data-act="cancelled" ' + (canCancel ? '' : 'disabled') + '>בטל הזמנה</button>' : '') +
+      '</div></div></div>';
+  }).join('');
+  box.querySelectorAll('.toggle').forEach(b => b.addEventListener('click', () => { b.parentElement.classList.toggle('open'); b.textContent = b.parentElement.classList.contains('open') ? 'סגור פרטים ▴' : 'פרטים והזמנה ▾'; }));
+  box.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => updateOrder(b.closest('.order').dataset.i, b.dataset.act, b)));
+}
+
+async function updateOrder(i, act, btn) {
+  const o = orders[i];
+  if (act === 'cancelled' && !window.confirm('לבטל את ההזמנה ולהחזיר את המוצרים למלאי?')) return;
+  const body = { paymentStatus: act === 'paid' ? 'paid' : (o.payment && o.payment.status) || 'pending', fulfillmentStatus: ['shipped','delivered','cancelled'].includes(act) ? act : getFulfillment(o) };
+  btn.disabled = true; btn.textContent = 'שומר…';
+  try {
+    await api('/admin/orders/' + o._id + '/status', { method: 'PATCH', body });
+    await loadOrders();
+  } catch (e) { showErr(e.message); await loadOrders(); }
+}
+
+async function loadOrders() {
+  try {
+    const data = await api('/admin/orders');
+    orders = data.orders || [];
+    renderOrders();
+  } catch (e) { showErr(e.message); }
+}
+
+function connectWs() {
+  if (ws) try { ws.close(); } catch {}
+  ws = new WebSocket(API.replace(/^http/, 'ws') + '/realtime', ['bearer', token]);
+  ws.onopen = () => $('liveDot').classList.add('on');
+  ws.onclose = () => { $('liveDot').classList.remove('on'); setTimeout(() => { if (token) connectWs(); }, 5000); };
+  ws.onmessage = (m) => {
+    try {
+      const { event, payload } = JSON.parse(m.data);
+      if (event === 'newOrder') {
+        const b = $('banner');
+        b.textContent = '🔔 הזמנה חדשה התקבלה' + (payload && payload.total != null ? ' · ' + Number(payload.total).toFixed(2) + '₪' : '') + '!';
+        b.classList.add('show');
+        setTimeout(() => b.classList.remove('show'), 8000);
+        try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch {}
+        loadOrders();
+      } else if (event === 'orderUpdated') loadOrders();
+    } catch {}
+  };
+}
+
+function showApp() {
+  $('loginView').style.display = 'none';
+  $('ordersView').style.display = 'block';
+  $('who').textContent = adminName;
+  loadShabbat(); loadOrders(); connectWs();
+}
+function logout() {
+  token = ''; adminName = '';
+  localStorage.removeItem('hmgr_token'); localStorage.removeItem('hmgr_name');
+  if (ws) { const w = ws; ws = null; try { w.close(); } catch {} }
+  $('ordersView').style.display = 'none'; $('loginView').style.display = 'block'; $('who').textContent = '';
+}
+
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = $('loginBtn'); btn.disabled = true; btn.textContent = 'מתחבר…';
+  try {
+    const res = await fetch(API + '/api/auth/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: $('email').value, password: $('password').value }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(hebrewError(data, res, 'ההתחברות נכשלה.'));
+    token = data.token; adminName = (data.admin && data.admin.name) || '';
+    localStorage.setItem('hmgr_token', token); localStorage.setItem('hmgr_name', adminName);
+    showApp();
+  } catch (e2) { showErr(e2.message === 'Failed to fetch' ? 'אין חיבור לשרת. בדקו את האינטרנט ונסו שוב.' : e2.message); }
+  btn.disabled = false; btn.textContent = 'התחברות';
+});
+$('refreshBtn').addEventListener('click', () => { loadShabbat(); loadOrders(); });
+$('logoutBtn').addEventListener('click', logout);
+
+if (token) showApp();
+</script>
+</body>
+</html>
