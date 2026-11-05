@@ -3,7 +3,21 @@ import bcrypt from 'bcryptjs';
 
 // bcrypt cost-12 runs here: Durable Objects have a 30s CPU budget per request,
 // plain Workers are limited to 10ms (verified empirically: DO route 40/40 OK, plain route 503s).
+let appHandler = null;
+export function registerApp(handler) { appHandler = handler; }
+
 export class AuthDO extends DurableObject {
+  // The 'api-v1' instance serves all HTTP traffic (see index.js); the 'auth'
+  // instance only runs bcrypt through RPC.
+  async fetch(request) {
+    if (!appHandler) return new Response('Service unavailable', { status: 503 });
+    const ctx = {
+      waitUntil: (promise) => this.ctx.waitUntil(promise),
+      passThroughOnException() {}
+    };
+    return appHandler(request, this.env, ctx);
+  }
+
   async hashPassword(password) {
     return bcrypt.hash(password, 12);
   }

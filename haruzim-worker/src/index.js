@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
-import { connectDb, isValidObjectId, startSession } from './db.js';
+import { acquireDb, isValidObjectId, startSession } from './db.js';
 import { signToken, verifyToken } from './jwt.js';
 import { getShabbatStatus } from './shabbat.js';
 import { createRateLimit } from './ratelimit.js';
-import { AuthDO, RealtimeDO, RateLimitDO } from './durable.js';
+import { AuthDO, RealtimeDO, RateLimitDO, registerApp } from './durable.js';
 
 export { AuthDO, RealtimeDO, RateLimitDO };
 
@@ -103,12 +103,12 @@ app.use('/api/*', createRateLimit({ windowMs: 15 * 60 * 1000, max: 600 }));
 // No index management here: required unique indexes were verified present on the
 // existing database by read-only inspection; the worker never mutates schema.
 app.use('/api/*', async (c, next) => {
-  const db = await connectDb(c.env);
-  c.set('db', db);
+  const lease = await acquireDb(c.env);
+  c.set('db', lease.db);
   try {
     await next();
   } finally {
-    c.executionCtx.waitUntil(db.connection.close().catch(() => {}));
+    c.executionCtx.waitUntil(Promise.resolve(lease.release()));
   }
 });
 
@@ -850,14 +850,15 @@ app.get('/realtime', async (c) => {
   if (!token) return c.json({ error: 'AUTH_REQUIRED' }, 401);
   try {
     const decoded = await verifyToken(token, c.env);
-    const db = await connectDb(c.env);
+    const lease = await acquireDb(c.env);
+    const db = lease.db;
     try {
       const admin = await db.models.Admin.findById(decoded.id).select('role active').lean();
       if (!admin?.active || !['admin', 'manager'].includes(admin.role)) {
         return c.json({ error: 'FORBIDDEN' }, 403);
       }
     } finally {
-      c.executionCtx.waitUntil(db.connection.close().catch(() => {}));
+      c.executionCtx.waitUntil(Promise.resolve(lease.release()));
     }
   } catch {
     return c.json({ error: 'UNAUTHORIZED' }, 401);
@@ -871,4 +872,16 @@ app.get('/realtime', async (c) => {
   });
 });
 
-export default app;
+// Free-plan Workers allow only 10 ms CPU per request; the API (MongoDB driver,
+// mongoose, BSON, JSON) needs more, so the real work runs inside the API Durable
+// Object (30 s CPU budget) and the front Worker only forwards the request.
+// DIRECT_MODE=1 restores the previous in-Worker behaviour (rollback switch).
+registerApp((request, env, ctx) => app.fetch(request, { ...env, SHARED_DB: '1' }, ctx));
+
+export default {
+  async fetch(request, env, ctx) {
+    if (env.DIRECT_MODE === '1') return app.fetch(request, env, ctx);
+    const stub = env.AUTH_DO.get(env.AUTH_DO.idFromName('api-v1'));
+    return stub.fetch(request);
+  }
+};
