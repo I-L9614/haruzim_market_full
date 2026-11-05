@@ -10,7 +10,7 @@ export default function Checkout({
 }) {
   return (
     <>
-      <section className="section-block checkout-form">
+      <section className="section-block checkout-form" id="checkout-details">
         <div className="panel-header">
           <h2>פרטי משלוח</h2>
           <span><Truck size={14} /> תיאום טלפוני</span>
@@ -18,11 +18,11 @@ export default function Checkout({
 
         <form onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
           <div className="form-grid">
-            <label>שם מלא<input autoComplete="name" value={customer.name} onChange={(e) => setCustomer((prev) => ({ ...prev, name: e.target.value }))} placeholder="ישראל ישראלי" required /></label>
-            <label>טלפון לחזרה<input type="tel" autoComplete="tel" inputMode="tel" value={customer.phone} onChange={(e) => setCustomer((prev) => ({ ...prev, phone: e.target.value }))} placeholder="050-0000000" required /></label>
+            <label>שם מלא<input autoComplete="name" value={customer.name} onChange={(e) => setCustomer((prev) => ({ ...prev, name: e.target.value }))} placeholder="ישראל ישראלי" id="checkout-name" required /></label>
+            <label>טלפון לחזרה<input type="tel" autoComplete="tel" inputMode="tel" value={customer.phone} onChange={(e) => setCustomer((prev) => ({ ...prev, phone: e.target.value }))} placeholder="050-0000000" id="checkout-phone" required /></label>
             <label>אימייל (לא חובה)<input type="email" autoComplete="email" value={customer.email} onChange={(e) => setCustomer((prev) => ({ ...prev, email: e.target.value }))} placeholder="name@example.com" /></label>
-            <label>רחוב ומספר<input autoComplete="street-address" value={customer.address.street} onChange={(e) => setCustomer((prev) => ({ ...prev, address: { ...prev.address, street: e.target.value } }))} placeholder="רחוב ומספר בית" required /></label>
-            <label>עיר<input autoComplete="address-level2" value={customer.address.city} onChange={(e) => setCustomer((prev) => ({ ...prev, address: { ...prev.address, city: e.target.value } }))} placeholder="עיר" required /></label>
+            <label>רחוב ומספר<input autoComplete="street-address" value={customer.address.street} onChange={(e) => setCustomer((prev) => ({ ...prev, address: { ...prev.address, street: e.target.value } }))} placeholder="רחוב ומספר בית" id="checkout-street" required /></label>
+            <label>עיר<input autoComplete="address-level2" value={customer.address.city} onChange={(e) => setCustomer((prev) => ({ ...prev, address: { ...prev.address, city: e.target.value } }))} placeholder="עיר" id="checkout-city" required /></label>
             <label>דירה / כניסה (לא חובה)<input value={customer.address.apartment} onChange={(e) => setCustomer((prev) => ({ ...prev, address: { ...prev.address, apartment: e.target.value } }))} placeholder="דירה, כניסה, קומה" /></label>
             <label className="notes-field">הערות למשלוח (לא חובה)<textarea value={customer.notes} onChange={(e) => setCustomer((prev) => ({ ...prev, notes: e.target.value }))} placeholder="פרטים שיעזרו לנו לתאם את המשלוח" rows="3" /></label>
           </div>

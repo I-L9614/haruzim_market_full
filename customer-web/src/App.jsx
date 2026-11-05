@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Phone, ShoppingCart, RefreshCw, UserRound, LogOut, Sparkles, WifiOff, MapPin } from 'lucide-react';
 import Catalog from './Catalog';
 import Cart from './Cart';
@@ -49,6 +49,7 @@ function App() {
   const [stockIssue, setStockIssue] = useState(null);
   const [isShabbatBlocked, setIsShabbatBlocked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitInFlight = useRef(false);
   const [loading, setLoading] = useState(true);
   const [authToken, setAuthToken] = useState(getStoredCustomerToken);
   const [account, setAccount] = useState(() => {
@@ -282,12 +283,23 @@ function App() {
       return;
     }
 
-    const isCustomerValid = customer.name.trim() && /^\+?[0-9\s()-]{9,20}$/.test(customer.phone) && customer.address.street.trim() && customer.address.city.trim();
-    if (!isCustomerValid) {
+    if (submitInFlight.current) return;
+
+    const firstInvalidField = !customer.name.trim() ? 'checkout-name'
+      : !/^\+?[0-9\s()-]{9,20}$/.test(customer.phone) ? 'checkout-phone'
+      : !customer.address.street.trim() ? 'checkout-street'
+      : !customer.address.city.trim() ? 'checkout-city'
+      : null;
+    if (firstInvalidField) {
       setCheckoutResult({ ok: false, message: 'נא למלא שם, טלפון תקין, רחוב ועיר.' });
+      const field = document.getElementById(firstInvalidField);
+      const section = document.getElementById('checkout-details');
+      (section || field)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (field) setTimeout(() => field.focus({ preventScroll: true }), 350);
       return;
     }
 
+    submitInFlight.current = true;
     setIsSubmitting(true);
 
     try {
@@ -330,6 +342,7 @@ function App() {
       console.error(error);
       setCheckoutResult({ ok: false, message: error.message || 'שגיאה בשליחת ההזמנה. בדקו את החיבור ונסו שוב.' });
     } finally {
+      submitInFlight.current = false;
       setIsSubmitting(false);
     }
   };
