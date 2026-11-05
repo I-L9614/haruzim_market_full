@@ -334,6 +334,21 @@ function App() {
     }
   };
 
+  const adjustFeaturedQuantity = (direction) => {
+    if (!featuredProduct) return;
+    const isWeightProduct = featuredProduct.unitType === 'weight';
+    const step = isWeightProduct ? 0.5 : 1;
+    const minimum = isWeightProduct ? 0.5 : 1;
+    setFeaturedQuantity((previous) => {
+      const current = Number(previous);
+      let next = Number.isFinite(current) ? current + direction * step : minimum;
+      next = Math.round(next * 100) / 100;
+      if (next < minimum) next = minimum;
+      if (featuredProduct.stockQuantity != null) next = Math.min(next, featuredProduct.stockQuantity);
+      return String(next);
+    });
+  };
+
   const orderStatusLabel = (order) => {
     if (order.fulfillment?.status === 'delivered') return 'נמסרה';
     if (order.fulfillment?.status === 'shipped') return 'נשלחה';
@@ -399,10 +414,29 @@ function App() {
       </header>
       {isShabbatBlocked && <div className="shabbat-purchase-banner" role="status">שבת שלום — האתר סגור לרכישה כעת. אפשר לעיין במוצרים; הזמנות יחודשו במוצאי שבת.</div>}
 
-      {featuredProduct && <section className={featuredProduct.imageUrl ? 'featured-product has-image' : 'featured-product'} aria-label="המוצר המומלץ של החנות">
-        <div className="featured-copy"><span className="featured-kicker"><Sparkles size={15} /> בחירת החנות</span><h2>{featuredProduct.name}</h2><p>{featuredProduct.description || 'המוצר שהחנות בחרה להציג במיוחד בשבילכם.'}</p><div className="featured-price">{Number(featuredProduct.promotion?.price ?? featuredProduct.price).toFixed(2)}₪ <small>{featuredProduct.unitType === 'weight' ? 'לק״ג' : 'ליחידה'}</small></div><label className="catalog-quantity-control featured-quantity-control"><span>{featuredProduct.unitType === 'weight' ? 'כמות בק״ג' : 'כמות ביחידות'}</span><input type="number" min={featuredProduct.unitType === 'weight' ? '0.01' : '1'} max={featuredProduct.stockQuantity ?? undefined} step={featuredProduct.unitType === 'weight' ? '0.01' : '1'} value={featuredQuantity} onChange={(event) => setFeaturedQuantity(event.target.value)} /></label><button className="primary-btn" type="button" disabled={isShabbatBlocked || featuredProduct.stockQuantity === 0} onClick={() => addToCart(featuredProduct, featuredQuantity)}>הוספה לעגלה</button></div>
-        {featuredProduct.imageUrl && <img src={featuredProduct.imageUrl} alt={featuredProduct.name} loading="eager" />}
-      </section>}
+      {featuredProduct && (
+        <section className={featuredProduct.imageUrl ? 'featured-product has-image' : 'featured-product'} aria-label="המוצר המומלץ של החנות">
+          <div className="featured-copy">
+            <span className="featured-kicker"><Sparkles size={15} /> בחירת החנות</span>
+            <h2>{featuredProduct.name}</h2>
+            <p>{featuredProduct.description || 'המוצר שהחנות בחרה להציג במיוחד בשבילכם.'}</p>
+            <div className="featured-price-row">
+              <span className="featured-price">{Number(featuredProduct.promotion?.price ?? featuredProduct.price).toFixed(2)}₪ <small>{featuredProduct.unitType === 'weight' ? 'לק״ג' : 'ליחידה'}</small></span>
+              {featuredProduct.promotion && <span className="price-old">{Number(featuredProduct.price).toFixed(2)}₪</span>}
+              {featuredProduct.promotion && <span className="promo">מבצע</span>}
+            </div>
+            <div className="buy-row">
+              <div className="qty-stepper" role="group" aria-label="בחירת כמות">
+                <button type="button" aria-label="הוסף" disabled={isShabbatBlocked} onClick={() => adjustFeaturedQuantity(1)}>+</button>
+                <span className="qty-value">{featuredQuantity} <span className="qty-unit">{featuredProduct.unitType === 'weight' ? 'ק״ג' : 'יח׳'}</span></span>
+                <button type="button" aria-label="הפחת" disabled={isShabbatBlocked} onClick={() => adjustFeaturedQuantity(-1)}>−</button>
+              </div>
+              <button className="add-btn" type="button" disabled={isShabbatBlocked || featuredProduct.stockQuantity === 0} onClick={() => addToCart(featuredProduct, featuredQuantity)}>הוספה לעגלה</button>
+            </div>
+          </div>
+          {featuredProduct.imageUrl && <img src={featuredProduct.imageUrl} alt={featuredProduct.name} loading="eager" />}
+        </section>
+      )}
 
       <main className="content-grid">
         {loading ? (
@@ -497,6 +531,10 @@ function App() {
         />
 
       </section>
+
+      <button className="cart-fab" type="button" onClick={() => document.getElementById('cart-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+        🛒 לעגלה · {cartTotal.toFixed(2)}₪
+      </button>
 
       {selectedProduct && (
         <div className="modal-backdrop" onClick={() => setSelectedProduct(null)}>

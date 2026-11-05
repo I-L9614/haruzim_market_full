@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 
 function formatPrice(value) {
   return Number(value || 0).toFixed(2);
@@ -26,6 +26,31 @@ export default function Catalog({
       || String(categoryName).toLocaleLowerCase('he-IL').includes(normalizedQuery);
     return matchesCategory && matchesQuery;
   });
+
+  const quantityStep = (product) => (product.unitType === 'weight' ? 0.5 : 1);
+  const quantityMinimum = (product) => (product.unitType === 'weight' ? 0.5 : 1);
+
+  const adjustQuantity = (product, direction) => {
+    const productId = String(product._id);
+    const step = quantityStep(product);
+    const minimum = quantityMinimum(product);
+    setQuantities((previous) => {
+      const current = Number(previous[productId] ?? '1');
+      let next = Number.isFinite(current) ? current + direction * step : minimum;
+      next = Math.round(next * 100) / 100;
+      if (next < minimum) next = minimum;
+      if (product.stockQuantity != null) next = Math.min(next, product.stockQuantity);
+      return { ...previous, [productId]: String(next) };
+    });
+  };
+
+  const stockChipFor = (product, isWeightProduct) => {
+    if (product.stockQuantity == null) return { label: 'זמין להזמנה', low: false };
+    const stock = Number(product.stockQuantity);
+    if (stock <= 0) return { label: 'אזל מהמלאי', low: true };
+    if (stock <= 3) return { label: `נותרו ${product.stockQuantity} ${isWeightProduct ? 'ק״ג' : 'יח׳'}`, low: true };
+    return { label: `במלאי: ${product.stockQuantity} ${isWeightProduct ? 'ק״ג' : 'יח׳'}`, low: false };
+  };
 
   return (
     <section className="catalog-panel">
@@ -67,41 +92,31 @@ export default function Catalog({
           const isWeightProduct = product.unitType === 'weight';
           const quantity = quantities[productId] ?? '1';
           const displayPrice = product.promotion?.price ?? product.price;
-          const unitLabel = product.unitType === 'weight' ? (product.unitLabel || 'ק"ג') : 'יחידה';
-          const stockLabel = product.stockQuantity == null
-            ? 'זמין להזמנה'
-            : `${product.stockQuantity} ${isWeightProduct ? 'ק״ג במלאי' : 'יחידות במלאי'}`;
+          const chip = stockChipFor(product, isWeightProduct);
 
           return (
             <article key={product._id} className="product-card">
-              <div className="product-image">{product.imageUrl ? <img src={product.imageUrl} alt={product.name} loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : (product.name?.slice(0, 2) || 'מ')}</div>
+              <button type="button" className="product-image product-image-btn" onClick={() => onSelectProduct(product)} aria-label={`פרטים נוספים על ${product.name}`}>
+                {product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : <span aria-hidden="true">{product.name?.slice(0, 2) || 'מ'}</span>}
+                {product.promotion && <span className="promo img-promo">מבצע</span>}
+                <span className="unit-tag">{isWeightProduct ? 'לק״ג' : 'ליחידה'}</span>
+              </button>
               <div className="product-meta">
-                <div className="tag-row">
-                  <span className="tag">{unitLabel}</span>
-                  {product.promotion && <span className="promo">מבצע</span>}
-                </div>
-                <h3>{product.name}</h3>
-                <p>{product.description}</p>
+                <h3><button type="button" className="product-name-btn" onClick={() => onSelectProduct(product)} aria-label={`פרטים נוספים על ${product.name}`}>{product.name}</button></h3>
+                <p className="product-desc">{product.description}</p>
                 <div className="price-row">
                   <strong>{formatPrice(displayPrice)}₪ <small>{isWeightProduct ? '/ ק״ג' : '/ יח׳'}</small></strong>
-                  <span>{stockLabel}</span>
+                  {product.promotion && <span className="price-old">{formatPrice(product.price)}₪</span>}
                 </div>
-                <label className="catalog-quantity-control">
-                  <span>{isWeightProduct ? 'כמות בק״ג' : 'כמות ביחידות'}</span>
-                  <input
-                    type="number"
-                    min={isWeightProduct ? '0.01' : '1'}
-                    max={product.stockQuantity ?? undefined}
-                    step={isWeightProduct ? '0.01' : '1'}
-                    value={quantity}
-                    aria-label={`${isWeightProduct ? 'משקל בקילוגרמים' : 'כמות ביחידות'} עבור ${product.name}`}
-                    onChange={(event) => setQuantities((previous) => ({ ...previous, [productId]: event.target.value }))}
-                  />
-                </label>
-                <div className="card-actions">
-                  <button className="secondary-btn" onClick={() => onSelectProduct(product)}>פרטים</button>
-                  <button className="primary-btn" onClick={() => onAddToCart(product, Number(quantity))} disabled={isShabbatBlocked || product.stockQuantity === 0}>
-                    <Plus size={14} /> הוסף לסל
+                <span className={chip.low ? 'stock-chip low' : 'stock-chip'}>{chip.label}</span>
+                <div className="buy-row">
+                  <div className="qty-stepper" role="group" aria-label={`בחירת כמות עבור ${product.name}`}>
+                    <button type="button" aria-label="הוסף" disabled={isShabbatBlocked} onClick={() => adjustQuantity(product, 1)}>+</button>
+                    <span className="qty-value">{quantity} <span className="qty-unit">{isWeightProduct ? 'ק״ג' : 'יח׳'}</span></span>
+                    <button type="button" aria-label="הפחת" disabled={isShabbatBlocked} onClick={() => adjustQuantity(product, -1)}>−</button>
+                  </div>
+                  <button className="add-btn" type="button" onClick={() => onAddToCart(product, Number(quantity))} disabled={isShabbatBlocked || product.stockQuantity === 0}>
+                    הוסף לסל
                   </button>
                 </div>
               </div>
