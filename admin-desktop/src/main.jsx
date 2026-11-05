@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { io } from 'socket.io-client';
+import { connectRealtime } from './realtime-client';
 import { BellRing, DollarSign, ShoppingBag, PackageCheck, TrendingUp, ShieldCheck, LogIn, Phone, MapPin, RefreshCw, Users, UserPlus, UserMinus } from 'lucide-react';
 import './styles.css';
 import ErrorBoundary from './ErrorBoundary';
@@ -79,7 +79,7 @@ function App() {
       setLoading(false);
       return undefined;
     }
-    const socket = io(SOCKET_URL, { auth: { token } });
+    const socket = connectRealtime(SOCKET_URL, token);
 
     const handleNewOrder = (payload) => {
       const orderId = payload?.orderId || payload?._id || 'חדש';
