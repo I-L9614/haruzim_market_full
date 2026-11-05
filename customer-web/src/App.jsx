@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { Phone, ShoppingCart, RefreshCw, UserRound, LogOut, Sparkles, WifiOff, MapPin } from 'lucide-react';
+import { Phone, ShoppingCart, RefreshCw, UserRound, LogOut, Sparkles, WifiOff, MapPin, Truck } from 'lucide-react';
 import Catalog from './Catalog';
 import Cart from './Cart';
 import Checkout from './Checkout';
@@ -425,6 +425,7 @@ function App() {
           <button className="primary-btn" type="button" onClick={() => document.getElementById('cart-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}><ShoppingCart size={16} /> {cart.length} פריטים</button>
         </div>
       </header>
+      <p className="delivery-notice" role="note"><Truck size={15} aria-hidden="true" /> משלוחים באזורים הקרובים לחנות: בהזמנה מ־300 ש״ח המשלוח חינם. בהזמנה נמוכה מ־300 ש״ח דמי המשלוח הם 30 ש״ח.</p>
       {isShabbatBlocked && <div className="shabbat-purchase-banner" role="status">שבת שלום — האתר סגור לרכישה כעת. אפשר לעיין במוצרים; הזמנות יחודשו במוצאי שבת.</div>}
 
       {featuredProduct && (

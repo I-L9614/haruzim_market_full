@@ -93,6 +93,8 @@ button:active, .chip:active, .primary-btn:active, .secondary-btn:active, .ghost-
   display: flex;
   gap: 12px;
 }
+.delivery-notice { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 14px 0 0; padding: 9px 16px; border: 1px solid rgba(61,109,77,.18); border-radius: 14px; color: var(--muted-strong); background: rgba(255,255,255,.72); font-size: .92rem; text-align: center; }
+.delivery-notice > svg { flex: none; color: var(--olive-600); }
 .shabbat-purchase-banner { margin: 14px 0 0; padding: 13px 16px; border: 1px solid #ead3a2; border-radius: 14px; color: #67491d; background: #fff7e4; font-weight: 700; text-align: center; }
 .error-boundary-card { max-width: 600px; margin: 12vh auto; padding: 28px; border: 1px solid rgba(215,90,82,.2); border-radius: 20px; background: white; box-shadow: var(--shadow-soft); }
 .catalog-error-panel { grid-column: 1 / -1; display: grid; justify-items: center; gap: 12px; padding: 48px 24px; border: 1px solid rgba(215,90,82,.2); border-radius: var(--radius-lg); color: var(--olive-900); background: rgba(255,255,255,.92); text-align: center; }
