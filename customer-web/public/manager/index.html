@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<title>ניהול הזמנות | חרוזים מרקט</title>
+<title>ניהול חנות | חרוזים מרקט</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
   body { background: #f0f4ec; color: #22331f; min-height: 100vh; padding-bottom: 24px; }
@@ -55,11 +55,19 @@
   .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #c3ccb9; margin-inline-end: 5px; }
   .live-dot.on { background: #2e6b3f; }
   .live { font-size: .72rem; color: #77856b; }
+  select, textarea { display: block; width: 100%; margin-top: 5px; padding: 11px 12px; border: 1.5px solid #28543b2e; border-radius: 10px; font-size: 1rem; background: #fff; font-family: inherit; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .add-body { margin-top: 12px; }
+  .add-card h3 { font-size: .95rem; margin-bottom: 10px; color: #2e6b3f; }
+  .add-card form + .sep { margin: 18px 0 14px; }
+  .sep { border: 0; border-top: 1px solid #eef2e9; }
+  .form-ok { background: #e3f2e4; color: #2e6b3f; border-radius: 10px; padding: 10px 12px; font-size: .85rem; font-weight: 700; margin-bottom: 12px; }
+  .add-toggle { margin-top: 0; font-size: .9rem; }
 </style>
 </head>
 <body>
 <header>
-  <h1>חרוזים מרקט · ניהול הזמנות</h1>
+  <h1>חרוזים מרקט · ניהול</h1>
   <span class="who" id="who"></span>
 </header>
 <div class="wrap">
@@ -78,6 +86,34 @@
   </div>
 
   <div id="ordersView" style="display:none">
+    <div class="card add-card">
+      <button class="toggle add-toggle" id="addToggle" type="button">＋ הוספת מוצר או קטגוריה ▾</button>
+      <div class="add-body" id="addBody" style="display:none">
+        <div class="form-ok" id="addOk" style="display:none" role="status"></div>
+        <form id="catForm">
+          <h3>קטגוריה חדשה</h3>
+          <label>שם הקטגוריה<input id="catName" maxlength="80" placeholder="למשל: פירות יבשים" required></label>
+          <button class="btn btn-outline" type="submit" id="catBtn">צור קטגוריה</button>
+        </form>
+        <hr class="sep">
+        <form id="prodForm">
+          <h3>מוצר חדש</h3>
+          <label>שם המוצר<input id="pName" maxlength="160" placeholder="למשל: חרוזים מעורבים 500 גרם" required></label>
+          <label>קטגוריה<select id="pCat" required></select></label>
+          <div class="two">
+            <label>מחיר (₪)<input id="pPrice" type="number" min="0" max="1000000" step="0.01" inputmode="decimal" required></label>
+            <label>מחיר מבצע (₪, לא חובה)<input id="pPromo" type="number" min="0" step="0.01" inputmode="decimal"></label>
+          </div>
+          <div class="two">
+            <label>נמכר ב-<select id="pUnit"><option value="units">יחידות</option><option value="weight">ק״ג (משקל)</option></select></label>
+            <label>מלאי (לא חובה)<input id="pStock" type="number" min="0" max="1000000" step="any" inputmode="decimal"></label>
+          </div>
+          <label>כתובת תמונה (לא חובה)<input id="pImg" type="url" inputmode="url" placeholder="https://" dir="ltr"></label>
+          <label>תיאור (לא חובה)<textarea id="pDesc" rows="2" maxlength="2000"></textarea></label>
+          <button class="btn" type="submit" id="prodBtn">הוסף מוצר</button>
+        </form>
+      </div>
+    </div>
     <div class="refresh-row">
       <h2>הזמנות <span class="live"><span class="live-dot" id="liveDot"></span>עדכון חי</span></h2>
       <div>
@@ -140,6 +176,7 @@ async function loadShabbat() {
   const s = $('shabbat');
   if (shabbatClosed) { s.textContent = 'החנות סגורה כרגע (שבת/חג). צפייה אפשרית, עדכון סטטוסים יחזור במוצאי השבת.'; s.classList.add('show'); }
   else s.classList.remove('show');
+  $('catBtn').disabled = shabbatClosed; $('prodBtn').disabled = shabbatClosed;
 }
 
 function renderOrders() {
@@ -220,7 +257,7 @@ function showApp() {
   $('loginView').style.display = 'none';
   $('ordersView').style.display = 'block';
   $('who').textContent = adminName;
-  loadShabbat(); loadOrders(); connectWs();
+  loadShabbat(); loadOrders(); loadCategories(); connectWs();
 }
 function logout() {
   token = ''; adminName = '';
@@ -228,6 +265,70 @@ function logout() {
   if (ws) { const w = ws; ws = null; try { w.close(); } catch {} }
   $('ordersView').style.display = 'none'; $('loginView').style.display = 'block'; $('who').textContent = '';
 }
+
+let categories = [];
+async function loadCategories() {
+  try {
+    const data = await api('/admin/products');
+    categories = data.categories || [];
+    const sel = $('pCat');
+    sel.innerHTML = categories.length
+      ? categories.map(c => '<option value="' + c._id + '">' + c.name + '</option>').join('')
+      : '<option value="">אין קטגוריות - צרו קטגוריה קודם</option>';
+  } catch (e) { showErr(e.message); }
+}
+function showOk(msg) { const e = $('addOk'); e.textContent = msg; e.style.display = 'block'; setTimeout(() => { e.style.display = 'none'; }, 6000); }
+function validateProductForm(v) {
+  if (v.name.length < 2 || v.name.length > 160) return 'יש להזין שם מוצר באורך 2–160 תווים.';
+  if (!v.category) return 'יש לבחור קטגוריה תקינה.';
+  if (!Number.isFinite(v.price) || v.price < 0 || v.price > 1000000) return 'המחיר חייב להיות מספר תקין ולא שלילי.';
+  if (v.stockQuantity !== null && (!Number.isFinite(v.stockQuantity) || v.stockQuantity < 0 || v.stockQuantity > 1000000)) return 'כמות המלאי חייבת להיות מספר תקין ולא שלילי.';
+  if (v.unitType === 'units' && v.stockQuantity !== null && !Number.isInteger(v.stockQuantity)) return 'מלאי של מוצר הנמכר ביחידות חייבת להיות מספר שלם.';
+  if (v.promotionPrice !== null && (!Number.isFinite(v.promotionPrice) || v.promotionPrice < 0 || v.promotionPrice >= v.price)) return 'מחיר המבצע חייב להיות תקין ונמוך מהמחיר הרגיל.';
+  if (v.imageUrl && (!/^https?:\/\//i.test(v.imageUrl) || v.imageUrl.length > 2000)) return 'כתובת התמונה חייבת להתחיל ב-http:// או https://.';
+  return '';
+}
+
+$('addToggle').addEventListener('click', () => {
+  const b = $('addBody'); const open = b.style.display !== 'none';
+  b.style.display = open ? 'none' : 'block';
+  $('addToggle').textContent = open ? '＋ הוספת מוצר או קטגוריה ▾' : 'סגור טופס הוספה ▴';
+});
+$('catForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = $('catName').value.trim();
+  if (name.length < 2 || name.length > 80) { showErr('שם הקטגוריה חייב להכיל 2–80 תווים.'); return; }
+  const btn = $('catBtn'); btn.disabled = true; btn.textContent = 'יוצר…';
+  try {
+    await api('/admin/catalog/categories', { method: 'POST', body: { name } });
+    $('catName').value = '';
+    showOk('הקטגוריה "' + name + '" נוצרה בהצלחה.');
+    await loadCategories();
+  } catch (e2) { showErr(e2.message); }
+  btn.disabled = shabbatClosed; btn.textContent = 'צור קטגוריה';
+});
+$('prodForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const v = {
+    name: $('pName').value.trim(),
+    category: $('pCat').value,
+    price: Number($('pPrice').value),
+    stockQuantity: $('pStock').value === '' ? null : Number($('pStock').value),
+    unitType: $('pUnit').value,
+    promotionPrice: $('pPromo').value === '' ? null : Number($('pPromo').value),
+    imageUrl: $('pImg').value.trim(),
+    description: $('pDesc').value.trim()
+  };
+  const invalid = validateProductForm(v);
+  if (invalid) { showErr(invalid); return; }
+  const btn = $('prodBtn'); btn.disabled = true; btn.textContent = 'מוסיף…';
+  try {
+    const data = await api('/admin/products', { method: 'POST', body: v });
+    $('prodForm').reset();
+    showOk('המוצר "' + v.name + '" נוסף לחנות.');
+  } catch (e2) { showErr(e2.message); }
+  btn.disabled = shabbatClosed; btn.textContent = 'הוסף מוצר';
+});
 
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
