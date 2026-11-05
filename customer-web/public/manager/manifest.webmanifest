@@ -1,0 +1,33 @@
+{
+  "id": "/manager/",
+  "name": "חרוזים מרקט · ניהול",
+  "short_name": "ניהול חרוזים",
+  "description": "ממשק ניהול ההזמנות והמוצרים של חרוזים מרקט",
+  "lang": "he",
+  "dir": "rtl",
+  "start_url": "/manager/",
+  "scope": "/manager/",
+  "display": "standalone",
+  "background_color": "#f0f4ec",
+  "theme_color": "#2e6b3f",
+  "icons": [
+    {
+      "src": "/manager/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/manager/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/manager/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

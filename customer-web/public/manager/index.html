@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#2e6b3f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ניהול חרוזים">
+<link rel="manifest" href="/manager/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/manager/icon-192.png">
+<link rel="apple-touch-icon" href="/manager/apple-touch-icon.png">
 <title>ניהול חנות | חרוזים מרקט</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
@@ -125,6 +133,7 @@
   </div>
 </div>
 <script>
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/manager/sw.js'); }
 const API = 'https://haruzim-api.haruzim-probe.workers.dev';
 const $ = (id) => document.getElementById(id);
 let token = localStorage.getItem('hmgr_token') || '';
