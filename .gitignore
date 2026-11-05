@@ -10,3 +10,5 @@ coverage/
 backend/logs/
 .vite/
 *.log
+**/release/
+admin-desktop/winicon/

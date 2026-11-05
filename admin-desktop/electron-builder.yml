@@ -1,0 +1,16 @@
+appId: com.haruzim.admin
+productName: Haruzim Admin
+directories:
+  output: release
+files:
+  - dist/**
+  - electron/**
+  - package.json
+win:
+  target: nsis
+  signAndEditExecutable: false
+nsis:
+  oneClick: true
+  perMachine: false
+  shortcutName: חרוזים - ניהול מרקט
+npmRebuild: false

@@ -1,0 +1,10 @@
+const fs = require('fs');
+const ResEdit = require('resedit');
+const exePath = process.argv[2], icoPath = process.argv[3];
+const exe = ResEdit.NtExecutable.from(fs.readFileSync(exePath), { ignoreCert: true });
+const res = ResEdit.NtExecutableResource.from(exe);
+const iconFile = ResEdit.Data.IconFile.from(fs.readFileSync(icoPath));
+ResEdit.Resource.IconGroupEntry.replaceIconsForResource(res.entries, 1, 1033, iconFile.icons.map(i => i.data));
+res.outputResource(exe);
+fs.writeFileSync(exePath, Buffer.from(exe.generate()));
+console.log('patched ok');
