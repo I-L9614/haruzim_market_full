@@ -1,5 +1,5 @@
 !define APP_NAME "Haruzim Admin"
-!define APP_VERSION "1.0.1"
+!define APP_VERSION "1.0.2"
 !define APP_PUBLISHER "Haruzim Market"
 !define APP_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\HaruzimAdmin.exe"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\HaruzimAdmin"
@@ -8,7 +8,7 @@ Unicode true
 SetCompressor zlib
 
 Name "${APP_NAME}"
-OutFile "Haruzim-Admin-Setup-1.0.1.exe"
+OutFile "Haruzim-Admin-Setup-1.0.2.exe"
 Icon "icon.ico"
 InstallDir "$LOCALAPPDATA\Programs\${APP_NAME}"
 RequestExecutionLevel user

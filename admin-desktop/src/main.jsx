@@ -86,7 +86,12 @@ function App() {
       const orderId = payload?.orderId || payload?._id || 'חדש';
       const total = payload?.total || 0;
       const incomingOrder = { ...payload, _id: String(orderId) };
-      playAlertTone();
+      // In-page tone only while the window is visible; when hidden to tray the
+      // main process shows the OS notification with its sound instead (no double sound).
+      if (document.visibilityState === 'visible') playAlertTone();
+      if (window.haruzimDesktop) {
+        window.haruzimDesktop.notifyNewOrder({ orderId: String(orderId).slice(-8), total });
+      }
       setNotification({ orderId, total });
       setOrders((prev) => [incomingOrder, ...prev.filter((order) => order._id !== incomingOrder._id)]);
       setTimeout(() => setNotification(null), 7000);

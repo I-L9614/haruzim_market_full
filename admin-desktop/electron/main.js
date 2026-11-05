@@ -1,4 +1,4 @@
-import { app, BrowserWindow, net, protocol } from 'electron';
+import { app, BrowserWindow, Menu, Notification, Tray, ipcMain, net, protocol } from 'electron';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -10,9 +10,26 @@ protocol.registerSchemesAsPrivileged([{
 }]);
 
 const isDev = !app.isPackaged;
+let mainWindow = null;
+let tray = null;
+let isQuitting = false;
+
+function createTray() {
+  tray = new Tray(path.join(__dirname, 'tray-icon.png'));
+  tray.setToolTip('חרוזים - ניהול מרקט');
+  const showWindow = () => {
+    if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+  };
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'פתח את חלון הניהול', click: showWindow },
+    { type: 'separator' },
+    { label: 'יציאה מלאה', click: () => { isQuitting = true; app.quit(); } }
+  ]));
+  tray.on('click', showWindow);
+}
 
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1500,
     height: 980,
     minWidth: 1100,
@@ -21,20 +38,47 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(__dirname, 'preload.js')
+      backgroundThrottling: false,
+      preload: path.join(__dirname, 'preload.cjs')
     }
   });
 
+  // Closing the window keeps the app running in the tray (notifications stay on).
+  // Full quit is only from the tray menu's "יציאה מלאה".
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+  mainWindow.on('closed', () => { mainWindow = null; });
+
   if (isDev) {
     mainWindow.loadURL('http://localhost:3002');
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
     mainWindow.loadURL('haruzim://admin/index.html');
   }
-
-  if (isDev) {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
-  }
 }
+
+// Renderer reports a new order; show an OS notification only while the window
+// is hidden (when visible, the in-page banner + alert tone already cover it,
+// so no duplicate sound).
+ipcMain.on('order-notification', (_event, payload) => {
+  if (mainWindow && mainWindow.isVisible()) return;
+  const orderId = payload && payload.orderId ? String(payload.orderId).slice(-8) : '';
+  const total = payload && payload.total != null ? ' · ' + Number(payload.total).toFixed(2) + '₪' : '';
+  const notification = new Notification({
+    title: 'הזמנה חדשה התקבלה',
+    body: (orderId ? 'הזמנה מספר ' + orderId : 'התקבלה הזמנה חדשה') + total,
+    silent: false,
+    icon: path.join(__dirname, 'tray-icon.png')
+  });
+  notification.on('click', () => {
+    if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+  });
+  notification.show();
+});
 
 app.whenReady().then(() => {
   if (app.isPackaged) {
@@ -53,6 +97,7 @@ app.whenReady().then(() => {
       return net.fetch(pathToFileURL(targetPath).toString());
     });
   }
+  createTray();
   createWindow();
 
   app.on('activate', () => {
@@ -60,8 +105,10 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('before-quit', () => { isQuitting = true; });
+
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (isQuitting && process.platform !== 'darwin') {
     app.quit();
   }
 });
