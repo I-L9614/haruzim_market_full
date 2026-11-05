@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Phone, ShoppingCart, RefreshCw, UserRound, LogOut, Sparkles, WifiOff } from 'lucide-react';
+import { Phone, ShoppingCart, RefreshCw, UserRound, LogOut, Sparkles, WifiOff, MapPin } from 'lucide-react';
 import Catalog from './Catalog';
 import Cart from './Cart';
 import Checkout from './Checkout';
 import CustomerAuthModal from './CustomerAuthModal';
+import { apiFetch, apiErrorMessage, parseJson } from './apiError';
 import OrderConfirmation from './OrderConfirmation';
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : '');
@@ -113,9 +114,9 @@ function App() {
       let isMounted = true;
       const refreshAccountOrders = async () => {
         try {
-          const response = await fetch(`${API_BASE}/customer/orders`, { headers: { Authorization: `Bearer ${authToken}` } });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן לטעון את ההזמנות בחשבון.');
+          const response = await apiFetch(`${API_BASE}/customer/orders`, { headers: { Authorization: `Bearer ${authToken}` } });
+          const data = await parseJson(response);
+          if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן לטעון את ההזמנות בחשבון.'));
           if (isMounted) {
             setOrders(data.orders || []);
             setTrackingError('');
@@ -136,13 +137,13 @@ function App() {
     const refreshOrders = async () => {
       try {
         const outcomes = await Promise.allSettled(trackedOrderIds.map(async (id) => {
-          const response = await fetch(`${API_BASE}/orders/${encodeURIComponent(id)}/track`, {
+          const response = await apiFetch(`${API_BASE}/orders/${encodeURIComponent(id)}/track`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phone: customer.phone })
           });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן לאמת פרטי מעקב.');
+          const data = await parseJson(response);
+          if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן לאמת פרטי מעקב.'));
           return data.order;
         }));
         const results = outcomes.filter((result) => result.status === 'fulfilled').map((result) => result.value);
@@ -241,7 +242,7 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/checkout/validate`, {
+      const response = await apiFetch(`${API_BASE}/checkout/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -252,12 +253,16 @@ function App() {
         })
       });
 
-      const data = await response.json();
-      if (!response.ok || data.stock_issue) {
+      const data = await parseJson(response);
+      if (!response.ok) {
+        setCheckoutResult({ ok: false, message: apiErrorMessage(response, data, 'לא ניתן לבדוק מלאי כרגע. נסו שוב.') });
+        return false;
+      }
+      if (data?.stock_issue) {
         setStockIssue({
           missingItems: data.missingItems || [],
           validItems: data.validItems || [],
-          message: data.error || data.message || 'העגלה כוללת מוצרים שלא זמינים כעת.'
+          message: data.message || data.error || 'העגלה כוללת מוצרים שלא זמינים כעת.'
         });
         return false;
       }
@@ -266,7 +271,7 @@ function App() {
       return true;
     } catch (error) {
       console.error(error);
-      setCheckoutResult({ ok: false, message: 'לא ניתן לבדוק מלאי כרגע. בדקו את החיבור ונסו שוב.' });
+      setCheckoutResult({ ok: false, message: error.message || 'לא ניתן לבדוק מלאי כרגע. נסו שוב.' });
       return false;
     }
   };
@@ -288,7 +293,7 @@ function App() {
     try {
       const isValid = await validateCart();
       if (!isValid) return;
-      const response = await fetch(`${API_BASE}/checkout`, {
+      const response = await apiFetch(`${API_BASE}/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
         body: JSON.stringify({
@@ -297,14 +302,14 @@ function App() {
         })
       });
 
-      const data = await response.json();
+      const data = await parseJson(response);
       if (!response.ok) {
-        if (data.stock_issue) setStockIssue({
+        if (data?.stock_issue) setStockIssue({
           missingItems: data.missingItems || [],
           validItems: data.validItems || [],
-          message: data.error || data.message || 'חלק מהמוצרים אינם זמינים עוד במלאי.'
+          message: data.message || data.error || 'חלק מהמוצרים אינם זמינים עוד במלאי.'
         });
-        setCheckoutResult({ ok: false, message: data.error || data.message || 'לא ניתן להשלים את ההזמנה.' });
+        setCheckoutResult({ ok: false, message: apiErrorMessage(response, data, 'לא ניתן להשלים את ההזמנה.') });
         return;
       }
 
@@ -340,14 +345,14 @@ function App() {
   const reorder = async (orderId) => {
     setReorderNotice('');
     try {
-      const response = await fetch(`${API_BASE}/customer/orders/${orderId}/reorder`, {
+      const response = await apiFetch(`${API_BASE}/customer/orders/${orderId}/reorder`, {
         method: 'POST', headers: { Authorization: `Bearer ${authToken}` }
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן לשחזר את ההזמנה.');
-      if (!data.available?.length) throw new Error(data.error || data.message || 'אין פריטים זמינים מההזמנה הזו.');
+      const data = await parseJson(response);
+      if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן לשחזר את ההזמנה.'));
+      if (!data?.available?.length) throw new Error(data?.message || 'אין פריטים זמינים מההזמנה הזו.');
       setCart(data.available.map((item) => ({ ...item, category: '' })));
-      setReorderNotice(data.message || data.error || 'הפריטים הזמינים נוספו לעגלה.');
+      setReorderNotice(data.message || 'הפריטים הזמינים נוספו לעגלה.');
       document.getElementById('cart-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } catch (error) {
       setReorderNotice(error.message || 'לא ניתן לשחזר את ההזמנה.');
@@ -378,12 +383,16 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div>
-          <p className="eyebrow">Haruzim Market</p>
-          <h1>מוצרים טריים, משלוח מהיר</h1>
+        <div className="brand-lockup">
+          <img src="/logo.png" alt="חרוזים מרקט" className="brand-logo" />
+          <div className="brand-text">
+            <h1>חרוזים מרקט</h1>
+            <p className="brand-tagline">מוצרים טריים, משלוח מהיר</p>
+            <p className="brand-address"><MapPin size={13} /> ביאליק 142 / ברוריה 5, רמת גן</p>
+          </div>
         </div>
         <div className="topbar-actions">
-          <button className="ghost-btn" type="button"><Phone size={14} /> תיאום משלוח טלפוני</button>
+          <a className="ghost-btn" href="tel:+972545522697"><Phone size={14} /> תיאום משלוח טלפוני</a>
           {account ? <button className="account-btn" type="button" onClick={signOut}><UserRound size={16} /> שלום, {account.name}<LogOut size={14} /></button> : <button className="account-btn" type="button" onClick={() => setShowAuthModal(true)}><UserRound size={16} /> התחברות</button>}
           <button className="primary-btn" type="button" onClick={() => document.getElementById('cart-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}><ShoppingCart size={16} /> {cart.length} פריטים</button>
         </div>

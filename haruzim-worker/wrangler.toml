@@ -1,0 +1,15 @@
+name = "haruzim-api"
+main = "src/index.js"
+compatibility_date = "2026-08-04"
+
+[durable_objects]
+bindings = [
+  { name = "AUTH_DO", class_name = "AuthDO", namespace_id = "f7e1217789fb41239403e6bbc50fae71" },
+  { name = "REALTIME_DO", class_name = "RealtimeDO", namespace_id = "cc9d7615bc0c43fc962beb2112ff26e0" },
+  { name = "RATE_LIMIT_DO", class_name = "RateLimitDO", namespace_id = "9049eb42bcbc43dcab512efad9289b8f" }
+]
+
+[vars]
+ALLOW_AUTH = "1"
+READ_ONLY = "0"
+CLIENT_ORIGIN = "https://haruzim-store.pages.dev,http://localhost:3002,haruzim://admin"

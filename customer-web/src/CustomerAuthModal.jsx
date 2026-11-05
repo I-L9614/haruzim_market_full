@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { LockKeyhole, Mail, Phone, UserRound, X } from 'lucide-react';
+import { CircleAlert, LockKeyhole, Mail, Phone, UserRound, X } from 'lucide-react';
+import { apiFetch, apiErrorMessage, parseJson } from './apiError';
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : '');
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
@@ -24,13 +25,13 @@ export default function CustomerAuthModal({ onClose, onAuthenticated }) {
           setBusy(true);
           setError('');
           try {
-            const response = await fetch(`${API_BASE}/auth/customer/google`, {
+            const response = await apiFetch(`${API_BASE}/auth/customer/google`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ credential })
             });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן להתחבר באמצעות Google.');
+            const data = await parseJson(response);
+            if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן להתחבר באמצעות Google.'));
             onAuthenticated(data);
           } catch (authError) {
             setError(authError.message || 'התחברות Google נכשלה.');
@@ -71,13 +72,13 @@ export default function CustomerAuthModal({ onClose, onAuthenticated }) {
     setBusy(true);
     try {
       const path = mode === 'register' ? 'register' : 'login';
-      const response = await fetch(`${API_BASE}/auth/customer/${path}`, {
+      const response = await apiFetch(`${API_BASE}/auth/customer/${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || 'לא ניתן להתחבר כרגע.');
+      const data = await parseJson(response);
+      if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן להתחבר כרגע.'));
       onAuthenticated(data);
     } catch (authError) {
       setError(authError.message || 'לא ניתן להתחבר כרגע.');
@@ -105,12 +106,12 @@ export default function CustomerAuthModal({ onClose, onAuthenticated }) {
           {mode === 'register' && <label><span><Phone size={15} /> טלפון</span><input required type="tel" autoComplete="tel" inputMode="tel" value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} placeholder="050-0000000" /></label>}
           <label><span><Mail size={15} /> אימייל</span><input required type="email" autoComplete="email" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} /></label>
           <label><span><LockKeyhole size={15} /> סיסמה</span><input required type="password" minLength={mode === 'register' ? 12 : 1} maxLength="128" autoComplete={mode === 'register' ? 'new-password' : 'current-password'} value={form.password} onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))} />{mode === 'register' && <small>לפחות 12 תווים</small>}</label>
-          {error && <p className="auth-error" role="alert">{error}</p>}
+          {error && <p className="auth-error" role="alert"><CircleAlert size={16} /> <span>{error}</span></p>}
           <button className="primary-btn full" type="submit" disabled={busy}>{busy ? 'מתחברים…' : mode === 'login' ? 'התחברות עם אימייל' : 'יצירת חשבון'}</button>
         </form>
 
-        <div className="auth-divider"><span>או</span></div>
-        {GOOGLE_CLIENT_ID ? <div className="google-auth-button" ref={googleButton} /> : <p className="google-config-note">התחברות Google תופעל לאחר הגדרת GOOGLE_CLIENT_ID באתר.</p>}
+        {GOOGLE_CLIENT_ID && <div className="auth-divider"><span>או</span></div>}
+        {GOOGLE_CLIENT_ID && <div className="google-auth-button" ref={googleButton} />}
         <button className="guest-continue" type="button" onClick={onClose}>המשך כאורח ללא חשבון</button>
       </section>
     </div>
