@@ -142,6 +142,7 @@ app.post('/api/auth/admin/login', createRateLimit({ windowMs: 15 * 60 * 1000, ma
 app.get('/api/auth/admin/me', requireAuth, (req, res) => res.json({ admin: req.user }));
 app.use('/api/auth/customer', customerAuthRoutes);
 
+app.use(require('./src/routes/creditCompatibility'));
 app.use('/api', orderRoutes);
 app.use('/api/customer/orders', customerOrderRoutes);
 app.use('/api/admin', analyticsRoutes);

@@ -422,3 +422,26 @@ button { cursor: pointer; }
   .category-create-form, .featured-select-form { align-items: stretch; flex-direction: column; }
   .admin-main { padding: 18px; }
 }
+
+.credit-panel { margin: 0 0 24px; padding: 24px; background: white; border: 1px solid #e4dcee; border-radius: 18px; }
+.credit-panel p, .credit-dialog p { line-height: 1.7; color: #625474; margin: 10px 0; }
+.credit-panel label, .credit-dialog label { display: grid; gap: 6px; font-size: .9rem; font-weight: 600; }
+.credit-panel input, .credit-dialog input, .credit-dialog select { width: 100%; min-width: 0; border: 1px solid #d4c9de; border-radius: 9px; padding: 10px; font: inherit; background: white; }
+.credit-panel button, .credit-dialog button { font: inherit; border: 1px solid #bca6d4; border-radius: 10px; padding: 10px 15px; color: #503480; background: #f3edf9; cursor: pointer; }
+.credit-panel button:disabled, .credit-dialog button:disabled { opacity: .5; cursor: default; }
+.credit-create { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+.credit-create label { flex: 1; min-width: 180px; }
+.credit-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 10px; margin: 16px 0; }
+.credit-panel .credit-account { display: grid; gap: 6px; text-align: start; background: #fcfaff; }
+.credit-account small { color: #71617e; }
+.credit-detail { border-top: 1px solid #e0d7e8; padding-top: 18px; display: grid; gap: 12px; }
+.credit-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+.credit-history { display: grid; gap: 8px; max-height: 400px; overflow: auto; }
+.credit-history article { display: grid; gap: 5px; padding: 12px; border: 1px solid #e7e0ee; border-radius: 10px; }
+.credit-dialog { max-height: 90vh; overflow: auto; width: min(540px,95vw); }
+.credit-panel { color: #332942; }
+.credit-panel h2, .credit-panel h3, .credit-panel label { color: #503480; }
+.credit-panel input, .credit-dialog input, .credit-dialog select { color: #332942; }
+.credit-dialog { color: #332942; }
+.credit-dialog h2, .credit-dialog label { color: #503480; }
+.credit-dialog input[type=number] { direction: ltr; text-align: right; }

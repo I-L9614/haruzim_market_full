@@ -7,11 +7,11 @@ export default function OrderConfirmation({ order, onContinue }) {
         <div className="confirmation-icon"><CheckCircle2 size={38} /></div>
         <p className="eyebrow">Haruzim Market</p>
         <h1 id="confirmation-title">ההזמנה נקלטה בהצלחה</h1>
-        <p className="confirmation-message">נציגי החנות יתקשרו אליך כדי לבצע חיוב ולתאם את המשלוח. לא בוצע חיוב באתר.</p>
+        <p className="confirmation-message">{order?.payment?.provider === 'credit' ? 'הזמנת ההקפה התקבלה. סכום החוב ייקבע על ידי החנות רק לאחר מסירת המוצרים. לא בוצע חיוב באתר.' : 'נציגי החנות יתקשרו אליך כדי לבצע חיוב ולתאם את המשלוח. לא בוצע חיוב באתר.'}</p>
         <div className="confirmation-details">
           <div><span><ReceiptText size={17} /> מספר הזמנה</span><strong>{order?._id}</strong></div>
           <div><span>סכום להזמנה</span><strong>{Number(order?.total || 0).toFixed(2)}₪</strong></div>
-          <div><span><Phone size={17} /> סטטוס תשלום</span><strong>תיאום טלפוני מול החנות</strong></div>
+          <div><span><Phone size={17} /> סטטוס תשלום</span><strong>{order?.payment?.provider === 'credit' ? 'בהקפה' : 'תיאום טלפוני מול החנות'}</strong></div>
         </div>
         <button className="primary-btn" type="button" onClick={onContinue}>חזרה לחנות</button>
       </section>

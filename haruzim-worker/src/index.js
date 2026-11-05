@@ -1,3 +1,4 @@
+import { creditKey, validSecret, publicAccount, changeBalance, deliverCredit, problem } from './credit.js';
 import { Hono } from 'hono';
 import { acquireDb, isValidObjectId, startSession } from './db.js';
 import { signToken, verifyToken } from './jwt.js';
@@ -228,6 +229,63 @@ app.get('/api/featured-product', async (c) => {
   return c.json({ product: product || null });
 });
 
+// ---------- credit accounts: manager-only and isolated from customer login ----------
+async function accountId(name) {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(creditKey(name)));
+  return Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, '0')).join('');
+}
+app.get('/api/admin/credit-accounts', requireAuth, adminOnly, async (c) => {
+  const accounts = await c.get('db').models.CreditAccount.find().sort({ name: 1 }).limit(1000).lean();
+  return c.json({ accounts: accounts.map(publicAccount) });
+});
+app.post('/api/admin/credit-accounts', requireAuth, adminOnly, shabbatGuard, async (c) => {
+  const { name, password } = c.get('body') || {};
+  const normalized = creditKey(name);
+  if (!validSecret(password)) throw problem('הקוד חייב להכיל 8 עד 72 תווים (עד 72 בתים).', 400);
+  const _id = await accountId(normalized);
+  const passwordHash = await authStub(c.env).hashPassword(password);
+  const db = c.get('db'), session = await db.connection.startSession();
+  let account;
+  try {
+    await session.withTransaction(async () => {
+      if (await db.models.CreditAccount.exists({ _id }).session(session)) throw problem('כבר קיים לקוח הקפה בשם הזה.');
+      [account] = await db.models.CreditAccount.create([{ _id, name: name.normalize('NFKC').trim().replace(/\s+/g, ' '), passwordHash, createdBy: c.get('user').id }], { session });
+      await db.models.CreditEntry.create([{ _id: `created:${_id}`, account: _id, kind: 'created', deltaCents: 0, beforeCents: 0, afterCents: 0, actorId: c.get('user').id, reason: 'פתיחת חשבון הקפה' }], { session });
+    });
+  } finally { await session.endSession(); }
+  return c.json({ account: publicAccount(account) }, 201);
+});
+app.get('/api/admin/credit-accounts/:id/history', requireAuth, adminOnly, async (c) => {
+  const { CreditAccount, CreditEntry } = c.get('db').models;
+  const account = await CreditAccount.findById(c.req.param('id')).lean();
+  if (!account) throw problem('לקוח ההקפה לא נמצא.', 404);
+  const before = c.req.query('before');
+  if (before && !Number.isFinite(Date.parse(before))) throw problem('תאריך היסטוריה אינו תקין.', 400);
+  const entries = await CreditEntry.find({ account: account._id, ...(before ? { createdAt: { $lt: new Date(before) } } : {}) }).sort({ createdAt: -1 }).limit(101).lean();
+  return c.json({ account: publicAccount(account), entries: entries.slice(0, 100), nextBefore: entries.length > 100 ? entries[99].createdAt : null });
+});
+app.patch('/api/admin/credit-accounts/:id/balance', requireAuth, adminOnly, shabbatGuard, async (c) => {
+  const account = await changeBalance(c.get('db'), { ...(c.get('body') || {}), accountId: c.req.param('id'), actorId: c.get('user').id });
+  broadcast(c, 'creditUpdated', { accountId: account._id });
+  return c.json({ account });
+});
+app.patch('/api/admin/credit-accounts/:id/access', requireAuth, adminOnly, shabbatGuard, async (c) => {
+  const { active, password, expectedVersion } = c.get('body') || {};
+  if (!Number.isInteger(expectedVersion) || (active !== undefined && typeof active !== 'boolean') || (password !== undefined && !validSecret(password)) || (active === undefined && password === undefined)) throw problem('פרטי העדכון אינם תקינים. קוד חייב להכיל לפחות 8 תווים.', 400);
+  const passwordHash = password === undefined ? undefined : await authStub(c.env).hashPassword(password);
+  const db = c.get('db'), session = await db.connection.startSession(); let account;
+  try { await session.withTransaction(async () => {
+    account = await db.models.CreditAccount.findById(c.req.param('id')).session(session);
+    if (!account) throw problem('לקוח ההקפה לא נמצא.', 404);
+    if (account.version !== expectedVersion) throw problem('החשבון השתנה. רעננו ונסו שוב.');
+    if (active !== undefined) account.active = active;
+    if (passwordHash) account.passwordHash = passwordHash;
+    account.version += 1; await account.save({ session });
+    await db.models.CreditEntry.create([{ _id: crypto.randomUUID(), account: account._id, kind: passwordHash ? 'credentials' : 'access', deltaCents: 0, beforeCents: account.balanceCents, afterCents: account.balanceCents, actorId: c.get('user').id, reason: passwordHash ? 'החלפת קוד הקפה' : active ? 'הפעלת אפשרות הקפה' : 'חסימת הזמנות הקפה חדשות' }], { session });
+  }); } finally { await session.endSession(); }
+  return c.json({ account: publicAccount(account) });
+});
+
 // ---------- admin auth ----------
 app.post('/api/auth/admin/login', loginLimit, async (c) => {
   const { email, password } = (await readBody(c)) || {};
@@ -400,6 +458,25 @@ app.post('/api/checkout/validate', validateLimit, shabbatGuard, async (c) => {
 app.post('/api/checkout', checkoutLimit, shabbatGuard, optionalCustomerAuth, async (c) => {
   const body = (await readBody(c)) || {};
   const { customer, items } = body;
+  let creditAccount = null;
+  if (body.paymentMethod !== undefined && !['offline', 'credit'].includes(body.paymentMethod)) throw problem('סוג תשלום אינו תקין.', 400);
+  if (body.paymentMethod === 'credit') {
+    const ip = c.req.header('cf-connecting-ip') || 'unknown';
+    const limiter = c.env.RATE_LIMIT_DO.get(c.env.RATE_LIMIT_DO.idFromName('limiter'));
+    const ipLimit = await limiter.check(`credit-login:${ip}`, 15 * 60 * 1000, 10);
+    if (!ipLimit.allowed) throw problem('בוצעו יותר מדי ניסיונות הקפה. נסו שוב בעוד 15 דקות.', 429);
+    let key;
+    try { key = await accountId(body.creditCredentials?.name); } catch { throw problem('שם או קוד הקפה שגויים.', 401); }
+    const accountLimit = await limiter.check(`credit-account:${key}`, 15 * 60 * 1000, 30);
+    if (!accountLimit.allowed) throw problem('בוצעו יותר מדי ניסיונות הקפה. נסו שוב בעוד 15 דקות.', 429);
+    const candidate = await c.get('db').models.CreditAccount.findById(key).select('+passwordHash').lean();
+    // Fixed cost dummy hash avoids revealing whether the name exists.
+    const hash = candidate?.passwordHash || '$2b$12$C6UzMDM.H6dfI/f/IKcEe.3OQFhA5IvM1aT3edFrVZ1ZpQHeXG6um';
+    const secret = body.creditCredentials?.password;
+    const ok = validSecret(secret) && await authStub(c.env).verifyPassword(secret, hash);
+    if (!candidate?.active || !ok) throw problem('שם או קוד הקפה שגויים.', 401);
+    creditAccount = candidate;
+  }
   const phone = String(customer?.phone || '').replace(/[\s()-]/g, '');
   if (!String(customer?.name || '').trim() || !/^\+?[0-9]{9,15}$/.test(phone) || !String(customer?.address?.street || '').trim() || !String(customer?.address?.city || '').trim() || !Array.isArray(items) || items.length === 0 || items.length > 100) {
     return c.json({ error: 'INVALID_CHECKOUT', message: 'יש למלא שם, טלפון תקין, כתובת למשלוח ולפחות מוצר אחד.' }, 400);
@@ -426,13 +503,19 @@ app.post('/api/checkout', checkoutLimit, shabbatGuard, optionalCustomerAuth, asy
     }, 400);
   }
 
-  const { Order, Product, User } = c.get('db').models;
+  const { Order, Product, User, CreditAccount } = c.get('db').models;
   const customerUser = c.get('customerUser');
   let session;
   let createdOrder;
   try {
     session = await startSession(c.get('db').connection);
     await session.withTransaction(async () => {
+      if (creditAccount) {
+        // Touch the account in this transaction so disabling/resetting a code
+        // concurrently cannot authorize an order with stale credentials.
+        const authorized = await CreditAccount.updateOne({ _id: creditAccount._id, active: true, passwordHash: creditAccount.passwordHash }, { $inc: { version: 1 } }, { session });
+        if (authorized.matchedCount !== 1) throw problem('פרטי ההקפה השתנו. יש להזין אותם מחדש.', 401);
+      }
       const products = await Product.find({ _id: { $in: items.map((item) => item.productId) }, active: true }).session(session);
       const byId = new Map(products.map((product) => [String(product._id), product]));
       const orderItems = [];
@@ -461,7 +544,7 @@ app.post('/api/checkout', checkoutLimit, shabbatGuard, optionalCustomerAuth, asy
       }
       [createdOrder] = await Order.create([{
         user: user._id, items: orderItems, customer: normalizedCustomer, subtotal, total: subtotal,
-        status: 'pending_payment', payment: { provider: 'offline', status: 'pending' }, fulfillment: { status: 'pending' }
+        status: creditAccount ? 'pending' : 'pending_payment', payment: { provider: creditAccount ? 'credit' : 'offline', status: 'pending' }, fulfillment: { status: 'pending' }, ...(creditAccount ? { credit: { account: creditAccount._id, name: creditAccount.name } } : {})
       }], { session });
     });
   } catch (error) {
@@ -476,7 +559,7 @@ app.post('/api/checkout', checkoutLimit, shabbatGuard, optionalCustomerAuth, asy
   broadcast(c, 'newOrder', {
     orderId: createdOrder._id, total: createdOrder.total, customer: createdOrder.customer,
     items: createdOrder.items, status: createdOrder.status, payment: createdOrder.payment,
-    fulfillment: createdOrder.fulfillment, createdAt: createdOrder.createdAt
+    fulfillment: createdOrder.fulfillment, credit: createdOrder.credit, createdAt: createdOrder.createdAt
   });
   c.executionCtx.waitUntil(notifyTelegramOrder(c.env, createdOrder));
 
@@ -654,6 +737,15 @@ app.patch('/api/admin/orders/:id/status', requireAuth, adminOnly, shabbatGuard, 
 
   const currentOrder = await Order.findById(id).lean();
   if (!currentOrder) return c.json({ error: 'ORDER_NOT_FOUND', message: 'ההזמנה לא נמצאה.' }, 404);
+  if (currentOrder.payment?.provider === 'credit') {
+    if (paymentStatus !== 'pending') throw problem('זו הזמנת הקפה. תקבולים ושינוי יתרה יש לרשום בחשבון לקוח ההקפה.', 409);
+    if (fulfillmentStatus === 'delivered') {
+      const order = await deliverCredit(c.get('db'), { orderId: id, decision: body.creditDecision, actorId: c.get('user').id, paymentStatus });
+      broadcast(c, 'orderUpdated', { orderId: order._id, status: order.status, payment: order.payment, fulfillment: order.fulfillment, credit: order.credit, updatedAt: order.updatedAt });
+      broadcast(c, 'creditUpdated', { accountId: order.credit.account });
+      return c.json({ order });
+    }
+  }
   const currentFulfillment = currentOrder.fulfillment?.status || 'pending';
   if (currentFulfillment === 'cancelled' || (currentOrder.payment?.status === 'paid' && paymentStatus !== 'paid')) {
     return c.json({ error: 'ORDER_TRANSITION_NOT_ALLOWED', message: 'לא ניתן לשנות את סטטוס ההזמנה במצב הנוכחי.' }, 409);
@@ -663,13 +755,13 @@ app.patch('/api/admin/orders/:id/status', requireAuth, adminOnly, shabbatGuard, 
       (fulfillmentStatus === 'pending' && currentFulfillment !== 'pending')) {
     return c.json({ error: 'ORDER_TRANSITION_NOT_ALLOWED', message: 'יש לעדכן את סטטוס המשלוח לפי סדר השלבים.' }, 409);
   }
-  const status = paymentStatus !== 'paid'
+  const status = currentOrder.payment?.provider === 'credit' ? (fulfillmentStatus === 'shipped' ? 'shipped' : 'pending') : paymentStatus !== 'paid'
     ? (paymentStatus === 'failed' ? 'cancelled' : 'pending_payment')
     : fulfillmentStatus === 'delivered' ? 'delivered' : fulfillmentStatus === 'shipped' ? 'shipped' : 'preparing';
-  const order = await Order.findByIdAndUpdate(id, {
+  const order = await Order.findOneAndUpdate({ _id: id, 'fulfillment.status': currentFulfillment, 'payment.status': currentOrder.payment.status }, {
     $set: { 'payment.status': paymentStatus, 'fulfillment.status': fulfillmentStatus, 'fulfillment.updatedAt': new Date(), status }
   }, { new: true, runValidators: true });
-  if (!order) return c.json({ error: 'ORDER_NOT_FOUND', message: 'ההזמנה לא נמצאה.' }, 404);
+  if (!order) throw problem('ההזמנה השתנתה במכשיר אחר. רעננו ונסו שוב.');
   broadcast(c, 'orderUpdated', {
     orderId: order._id, status: order.status, payment: order.payment,
     fulfillment: order.fulfillment, updatedAt: order.updatedAt

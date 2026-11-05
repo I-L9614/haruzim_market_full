@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Check, CircleAlert, Truck } from 'lucide-react';
 
 export default function Checkout({
@@ -8,6 +9,8 @@ export default function Checkout({
   isSubmitting,
   isShabbatBlocked
 }) {
+  const [creditOpen, setCreditOpen] = useState(false);
+  const [credentials, setCredentials] = useState({ name: '', password: '' });
   return (
     <>
       <section className="section-block checkout-form" id="checkout-details">
@@ -16,7 +19,7 @@ export default function Checkout({
           <span><Truck size={14} /> תיאום טלפוני</span>
         </div>
 
-        <form onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
+        <form onSubmit={(event) => { event.preventDefault(); if (creditOpen) { if (credentials.name.trim() && credentials.password.length >= 8) onSubmit({ paymentMethod: 'credit', creditCredentials: credentials }); } else onSubmit(); }}>
           <div className="form-grid">
             <label>שם מלא<input autoComplete="name" value={customer.name} onChange={(e) => setCustomer((prev) => ({ ...prev, name: e.target.value }))} placeholder="ישראל ישראלי" id="checkout-name" required /></label>
             <label>טלפון לחזרה<input type="tel" autoComplete="tel" inputMode="tel" value={customer.phone} onChange={(e) => setCustomer((prev) => ({ ...prev, phone: e.target.value }))} placeholder="050-0000000" id="checkout-phone" required /></label>
@@ -28,8 +31,16 @@ export default function Checkout({
           </div>
           <p className="offline-payment-note">לא מתבצע חיוב באתר. לאחר שליחת ההזמנה נציגי החנות יתקשרו לביצוע החיוב ולתיאום המשלוח.</p>
           <div className="checkout-submit-row">
-            <button className="primary-btn" type="submit" disabled={isSubmitting || isShabbatBlocked}>{isShabbatBlocked ? 'הזמנות סגורות בשבת' : isSubmitting ? 'שולחים הזמנה…' : 'שליחת הזמנה לחנות'}</button>
+            <button className="credit-checkout-btn" type="button" disabled={isSubmitting || isShabbatBlocked} onClick={() => setCreditOpen(v => !v)} aria-expanded={creditOpen}>הזמנה בהקפה · ללקוחות מורשים</button>
+            <button className="primary-btn" type="button" onClick={event => { if (event.currentTarget.closest('form').reportValidity()) onSubmit(); }} disabled={isSubmitting || isShabbatBlocked}>{isShabbatBlocked ? 'הזמנות סגורות בשבת' : isSubmitting ? 'שולחים הזמנה…' : 'שליחת הזמנה לחנות'}</button>
           </div>
+          {creditOpen && <fieldset className="credit-checkout-panel">
+            <legend>הזמנה בהקפה</legend>
+            <p>הזינו את השם והקוד שמנהל החנות הגדיר לכם. החוב יירשם רק לאחר מסירת ההזמנה ובהחלטת המנהל.</p>
+            <label>שם לקוח להקפה<input value={credentials.name} maxLength={80} autoComplete="off" onChange={e => setCredentials(v => ({ ...v, name: e.target.value }))} /></label>
+            <label>קוד הקפה<input type="password" value={credentials.password} maxLength={72} autoComplete="off" onChange={e => setCredentials(v => ({ ...v, password: e.target.value }))} /></label>
+            <button type="button" className="credit-checkout-btn" disabled={isSubmitting || isShabbatBlocked || !credentials.name.trim() || credentials.password.length < 8} onClick={async e => { if (!e.currentTarget.closest('form').reportValidity()) return; const ok = await onSubmit({ paymentMethod: 'credit', creditCredentials: credentials }); if (ok) { setCredentials({ name: '', password: '' }); setCreditOpen(false); } }}>{isSubmitting ? 'שולחים…' : 'אישור ושליחת הזמנה בהקפה'}</button>
+          </fieldset>}
         </form>
       </section>
 

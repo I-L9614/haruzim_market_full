@@ -52,6 +52,7 @@ const orderSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   items: { type: [orderItemSchema], required: true },
   customer: { name: String, phone: String, email: String, address: addressSchema, notes: String },
+  credit: { account: { type: String, ref: 'CreditAccount' }, name: String, decisionAt: Date, decisionMode: { type: String, enum: ['total', 'custom', 'skip'] }, amountCents: Number },
   subtotal: { type: Number, required: true, min: 0 },
   total: { type: Number, required: true, min: 0 },
   payment: {
@@ -85,8 +86,31 @@ const storefrontConfigSchema = new mongoose.Schema({
   featuredProduct: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null }
 }, { timestamps: true });
 
+const creditAccountSchema = new mongoose.Schema({
+  _id: { type: String },
+  name: { type: String, required: true, maxlength: 80 },
+  passwordHash: { type: String, required: true, select: false },
+  active: { type: Boolean, default: true },
+  balanceCents: { type: Number, default: 0, validate: Number.isSafeInteger },
+  version: { type: Number, default: 0 },
+  createdBy: String
+}, { timestamps: true, autoIndex: false });
+const creditEntrySchema = new mongoose.Schema({
+  _id: String,
+  account: { type: String, ref: 'CreditAccount', required: true },
+  order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
+  kind: { type: String, enum: ['created', 'credentials', 'access', 'delivery', 'set', 'reset'], required: true },
+  deltaCents: { type: Number, required: true, validate: Number.isSafeInteger },
+  beforeCents: { type: Number, required: true, validate: Number.isSafeInteger },
+  afterCents: { type: Number, required: true, validate: Number.isSafeInteger },
+  reason: { type: String, maxlength: 300 },
+  actorId: { type: String, required: true }
+}, { timestamps: { createdAt: true, updatedAt: false }, autoIndex: false });
+
 export function registerModelsOn(connection) {
   return {
+    CreditAccount: connection.model('CreditAccount', creditAccountSchema),
+    CreditEntry: connection.model('CreditEntry', creditEntrySchema),
     User: connection.model('User', userSchema),
     Category: connection.model('Category', categorySchema),
     Product: connection.model('Product', productSchema),

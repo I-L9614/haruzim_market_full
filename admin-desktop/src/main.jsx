@@ -5,6 +5,7 @@ import { apiFetch, apiErrorMessage, parseJson } from './apiError';
 import { BellRing, DollarSign, ShoppingBag, PackageCheck, TrendingUp, ShieldCheck, LogIn, Phone, MapPin, RefreshCw, Users, UserPlus, UserMinus } from 'lucide-react';
 import './styles.css';
 import ErrorBoundary from './ErrorBoundary';
+import CreditAccounts, { CreditDecision } from './CreditAccounts';
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : '');
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || (API_BASE ? API_BASE.replace(/\/api\/?$/, '') : '');
@@ -37,6 +38,9 @@ function getTokenRole(token) {
 }
 
 function App() {
+  const [activeSection, setActiveSection] = useState('dashboard');
+  const [creditOrder, setCreditOrder] = useState(null);
+  const [creditRevision, setCreditRevision] = useState(0);
   const [stats, setStats] = useState({
     totalRevenue: 0,
     totalOrders: 0,
@@ -99,7 +103,7 @@ function App() {
 
     const handleOrderUpdated = (payload) => {
       setOrders((prev) => prev.map((order) => String(order._id) === String(payload.orderId)
-        ? { ...order, status: payload.status, payment: payload.payment, fulfillment: payload.fulfillment }
+        ? { ...order, status: payload.status, payment: payload.payment, fulfillment: payload.fulfillment, ...(payload.credit ? { credit: payload.credit } : {}) }
         : order));
     };
 
@@ -110,6 +114,7 @@ function App() {
     socket.on('disconnect', () => setIsConnected(false));
     socket.on('newOrder', handleNewOrder);
     socket.on('orderUpdated', handleOrderUpdated);
+    socket.on('creditUpdated', () => setCreditRevision(v => v + 1));
 
     const fetchStats = async () => {
       const response = await apiFetch(`${API_BASE}/admin/stats`, {
@@ -469,11 +474,13 @@ function App() {
   const updateOrder = async (order, changes) => {
     if (isShabbatClosed) { setError('החנות סגורה בשבת. עדכון הזמנות יתאפשר לאחר צאת השבת.'); return; }
     if (changes.fulfillmentStatus === 'cancelled' && !window.confirm('לבטל את ההזמנה ולהחזיר את המוצרים למלאי?')) return;
+    if (changes.fulfillmentStatus === 'delivered' && order.payment?.provider === 'credit' && !changes.creditDecision) { setCreditOrder(order); return; }
     setSavingOrder(String(order._id));
     setError('');
     const updated = {
       paymentStatus: changes.paymentStatus || order.payment?.status || 'pending',
-      fulfillmentStatus: changes.fulfillmentStatus || getFulfillmentStatus(order)
+      fulfillmentStatus: changes.fulfillmentStatus || getFulfillmentStatus(order),
+      ...(changes.creditDecision ? { creditDecision: changes.creditDecision } : {})
     };
     try {
       const response = await apiFetch(`${API_BASE}/admin/orders/${order._id}/status`, {
@@ -484,6 +491,7 @@ function App() {
       const data = await parseJson(response);
       if (!response.ok) throw new Error(apiErrorMessage(response, data, 'עדכון ההזמנה נכשל.'));
       setOrders((prev) => prev.map((item) => String(item._id) === String(order._id) ? data.order : item));
+      setCreditOrder(null); setCreditRevision(v => v + 1);
       const statsResponse = await apiFetch(`${API_BASE}/admin/stats`, { headers: { Authorization: `Bearer ${token}` } });
       if (statsResponse.ok) setStats(await parseJson(statsResponse));
     } catch (updateError) {
@@ -519,7 +527,7 @@ function App() {
   const isOrderComplete = (order) => ['delivered', 'cancelled'].includes(getFulfillmentStatus(order));
   const visibleOrders = orders.filter((order) => orderFilter === 'all' || (orderFilter === 'history' ? isOrderComplete(order) : !isOrderComplete(order)));
   const statusLabels = { pending_payment: 'ממתין לתשלום', pending: 'ממתין לטיפול', preparing: 'בהכנה', shipped: 'נשלח', delivered: 'נמסר', cancelled: 'בוטל' };
-  const scrollToSection = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const scrollToSection = (id) => { setActiveSection(id); setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); };
 
   if (!token) {
     return (
@@ -550,11 +558,12 @@ function App() {
         </div>
 
         <nav className="nav-list">
-          <button className="nav-item active" onClick={() => scrollToSection('dashboard')}>דשבורד</button>
-          <button className="nav-item" onClick={() => scrollToSection('orders')}>הזמנות והיסטוריה</button>
-          <button className="nav-item" onClick={() => scrollToSection('inventory')}>מלאי</button>
-          <button className="nav-item" onClick={() => scrollToSection('connection')}>חיבור מערכת</button>
-          {isOwner && <button className="nav-item" onClick={() => scrollToSection('managers')}>ניהול מנהלים</button>}
+          <button className={`nav-item ${activeSection === 'dashboard' ? 'active' : ''}`} onClick={() => scrollToSection('dashboard')}>דשבורד</button>
+          <button className={`nav-item ${activeSection === 'orders' ? 'active' : ''}`} onClick={() => scrollToSection('orders')}>הזמנות והיסטוריה</button>
+          <button className={`nav-item ${activeSection === 'credit-accounts' ? 'active' : ''}`} onClick={() => scrollToSection('credit-accounts')}>לקוחות בהקפה</button>
+          <button className={`nav-item ${activeSection === 'inventory' ? 'active' : ''}`} onClick={() => scrollToSection('inventory')}>מלאי</button>
+          <button className={`nav-item ${activeSection === 'connection' ? 'active' : ''}`} onClick={() => scrollToSection('connection')}>חיבור מערכת</button>
+          {isOwner && <button className={`nav-item ${activeSection === 'managers' ? 'active' : ''}`} onClick={() => scrollToSection('managers')}>ניהול מנהלים</button>}
         </nav>
       </aside>
 
@@ -570,6 +579,7 @@ function App() {
           <button className="logout-btn" type="button" onClick={signOut}>יציאה</button>
         </header>
 
+        {creditOrder && <CreditDecision order={creditOrder} busy={!!savingOrder} onCancel={() => setCreditOrder(null)} onSave={creditDecision => updateOrder(creditOrder, { fulfillmentStatus: 'delivered', creditDecision })} />}
         {error && <div className="error-banner" role="alert">{error}</div>}
         {isShabbatClosed && <div className="shabbat-admin-banner" role="status"><strong>שבת שלום — החנות סגורה לעדכונים כעת.</strong><span>אפשר לצפות בנתונים; עריכת הזמנות, מלאי וקטגוריות תתאפשר לאחר צאת השבת.</span></div>}
 
@@ -587,6 +597,8 @@ function App() {
           </section>
         ) : (
           <>
+            {activeSection === 'credit-accounts' && <CreditAccounts apiBase={API_BASE} token={token} disabled={isShabbatClosed} revision={creditRevision} />}
+            <div style={{ display: activeSection === 'credit-accounts' ? 'none' : undefined }}>
             <section className="stats-grid" id="dashboard">
               <div className="stat-card">
                 <DollarSign size={18} />
@@ -671,11 +683,11 @@ function App() {
                     </div>
                     <strong className="order-total">{Number(order.total || 0).toFixed(2)}₪</strong>
                     <div className="order-statuses">
-                      <span className={`order-badge ${order.payment?.status === 'paid' ? 'paid' : 'waiting'}`}>{order.payment?.status === 'paid' ? 'שולם' : 'ממתין לתשלום'}</span>
+                      <span className={`order-badge ${order.payment?.status === 'paid' ? 'paid' : 'waiting'}`}>{order.payment?.provider === 'credit' ? `בהקפה · ${order.credit?.name || ''}` : order.payment?.status === 'paid' ? 'שולם' : 'ממתין לתשלום'}</span>
                       <span className={`order-badge ${['shipped', 'delivered'].includes(getFulfillmentStatus(order)) ? 'shipped' : 'waiting'}`}>{getFulfillmentStatus(order) === 'shipped' ? 'נשלח' : getFulfillmentStatus(order) === 'delivered' ? 'נמסר' : getFulfillmentStatus(order) === 'cancelled' ? 'בוטל' : 'ממתין למשלוח'}</span>
                     </div>
                     <div className="order-actions">
-                      <button type="button" disabled={isShabbatClosed || savingOrder === String(order._id) || order.payment?.status === 'paid' || getFulfillmentStatus(order) === 'cancelled'} onClick={() => updateOrder(order, { paymentStatus: 'paid' })}>{savingOrder === String(order._id) ? 'שומר…' : order.payment?.status === 'paid' ? 'שולם ✓' : 'סמן כשולם'}</button>
+                      <button type="button" disabled={order.payment?.provider === 'credit' || isShabbatClosed || savingOrder === String(order._id) || order.payment?.status === 'paid' || getFulfillmentStatus(order) === 'cancelled'} onClick={() => updateOrder(order, { paymentStatus: 'paid' })}>{savingOrder === String(order._id) ? 'שומר…' : order.payment?.status === 'paid' ? 'שולם ✓' : 'סמן כשולם'}</button>
                       <button type="button" disabled={isShabbatClosed || savingOrder === String(order._id) || getFulfillmentStatus(order) !== 'pending'} onClick={() => updateOrder(order, { fulfillmentStatus: 'shipped' })}>{['shipped', 'delivered'].includes(getFulfillmentStatus(order)) ? 'נשלח ✓' : 'סמן כנשלח'}</button>
                       <button type="button" disabled={isShabbatClosed || savingOrder === String(order._id) || getFulfillmentStatus(order) !== 'shipped'} onClick={() => updateOrder(order, { fulfillmentStatus: 'delivered' })}>{getFulfillmentStatus(order) === 'delivered' ? 'נמסר ✓' : 'סמן כנמסר'}</button>
                       {getFulfillmentStatus(order) === 'pending' && order.payment?.status !== 'paid' && <button type="button" disabled={isShabbatClosed || savingOrder === String(order._id)} onClick={() => updateOrder(order, { fulfillmentStatus: 'cancelled' })}>בטל הזמנה</button>}
@@ -747,6 +759,7 @@ function App() {
                 </div>
               </section>
             )}
+            </div>
           </>
         )}
       </main>

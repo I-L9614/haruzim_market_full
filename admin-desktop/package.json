@@ -1,7 +1,7 @@
 {
   "name": "admin-desktop",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {
@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "electron": "electron .",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:3002 && electron .\"",
-    "electron:build": "electron-builder"
+    "electron:build": "electron-builder",
+    "build:mobile-credit": "vite build --config vite.mobile-credit.config.js"
   },
   "dependencies": {
     "lucide-react": "^0.453.0",

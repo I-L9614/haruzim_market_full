@@ -277,7 +277,7 @@ function App() {
     }
   };
 
-  const handleSubmitOrder = async () => {
+  const handleSubmitOrder = async (options = {}) => {
     if (isShabbatBlocked) {
       setCheckoutResult({ ok: false, message: 'שבת שלום — האתר סגור להזמנות כעת. נשמח לקבל את הזמנתכם במוצאי שבת.' });
       return;
@@ -310,6 +310,7 @@ function App() {
         headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
         body: JSON.stringify({
           customer,
+          ...(options.paymentMethod === 'credit' ? { paymentMethod: 'credit', creditCredentials: options.creditCredentials } : {}),
           items: cart.map((item) => ({ productId: item.productId, quantity: item.quantity }))
         })
       });
@@ -338,6 +339,7 @@ function App() {
       try { localStorage.setItem('haruzim-order-ids', JSON.stringify(nextIds)); } catch { /* tracking still works for this session */ }
       setTrackedOrderIds(nextIds);
       setStockIssue(null);
+      return true;
     } catch (error) {
       console.error(error);
       setCheckoutResult({ ok: false, message: error.message || 'שגיאה בשליחת ההזמנה. בדקו את החיבור ונסו שוב.' });
@@ -542,6 +544,7 @@ function App() {
           checkoutResult={checkoutResult}
           onSubmit={handleSubmitOrder}
           isSubmitting={isSubmitting}
+          isShabbatBlocked={isShabbatBlocked}
         />
 
       </section>

@@ -1,7 +1,7 @@
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
 !define APP_NAME "Haruzim Admin"
-!define APP_VERSION "1.0.3"
+!define APP_VERSION "1.0.4"
 !define APP_PUBLISHER "Haruzim Market"
 !define APP_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\HaruzimAdmin.exe"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\HaruzimAdmin"

@@ -72,6 +72,7 @@
   .form-ok { background: #e3f2e4; color: #2e6b3f; border-radius: 10px; padding: 10px 12px; font-size: .85rem; font-weight: 700; margin-bottom: 12px; }
   .add-toggle { margin-top: 0; font-size: .9rem; }
 </style>
+<link rel="stylesheet" href="/manager/credit-assets/credit.css">
 </head>
 <body>
 <header>
@@ -94,6 +95,7 @@
   </div>
 
   <div id="ordersView" style="display:none">
+    <div id="creditWidget"></div>
     <div class="card add-card">
       <button class="toggle add-toggle" id="addToggle" type="button">＋ הוספת מוצר או קטגוריה ▾</button>
       <div class="add-body" id="addBody" style="display:none">
@@ -180,14 +182,16 @@ async function loadShabbat() {
   try {
     const res = await fetch(API + '/api/shabbat/status');
     const data = await res.json();
-    shabbatClosed = !!(data.closed || data.blocked);
+    shabbatClosed = !!(data.isShabbat || data.closed || data.blocked);
   } catch { shabbatClosed = false; }
   const s = $('shabbat');
   if (shabbatClosed) { s.textContent = 'החנות סגורה כרגע (שבת/חג). צפייה אפשרית, עדכון סטטוסים יחזור במוצאי השבת.'; s.classList.add('show'); }
   else s.classList.remove('show');
+  window.dispatchEvent(new CustomEvent('manager-credit-auth', { detail: { token, disabled: shabbatClosed } }));
   $('catBtn').disabled = shabbatClosed; $('prodBtn').disabled = shabbatClosed;
 }
 
+function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c])); }
 function renderOrders() {
   const box = $('orders');
   if (!orders.length) { box.innerHTML = '<div class="card empty">אין הזמנות להצגה.</div>'; return; }
@@ -198,19 +202,19 @@ function renderOrders() {
     const when = new Date(o.createdAt).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     const c = o.customer || {};
     const addr = [c.address && c.address.street, c.address && c.address.apartment, c.address && c.address.city].filter(Boolean).join(', ');
-    const items = (o.items || []).map(it => '<li>' + it.name + ' × ' + it.quantity + ' ' + (it.unitType === 'weight' ? 'ק״ג' : 'יח׳') + ' · ' + Number(it.total || it.unitPrice * it.quantity || 0).toFixed(2) + '₪</li>').join('');
-    const canPay = !shabbatClosed && !paid && ful !== 'cancelled';
+    const items = (o.items || []).map(it => '<li>' + esc(it.name) + ' × ' + it.quantity + ' ' + (it.unitType === 'weight' ? 'ק״ג' : 'יח׳') + ' · ' + Number(it.total || it.unitPrice * it.quantity || 0).toFixed(2) + '₪</li>').join('');
+    const canPay = o.payment?.provider !== 'credit' && !shabbatClosed && !paid && ful !== 'cancelled';
     const canShip = !shabbatClosed && ful === 'pending';
     const canDeliver = !shabbatClosed && ful === 'shipped';
     const canCancel = !shabbatClosed && ful === 'pending' && !paid;
     return '<div class="card order" data-i="' + i + '">' +
-      '<div class="order-top"><div><strong>' + (c.name || 'לקוח') + '</strong><div class="order-meta">מס׳ ' + id8 + ' · ' + when + '</div></div>' +
+      '<div class="order-top"><div><strong>' + esc(c.name || 'לקוח') + '</strong><div class="order-meta">מס׳ ' + id8 + ' · ' + when + '</div></div>' +
       '<span class="order-total">' + Number(o.total || 0).toFixed(2) + '₪</span></div>' +
-      '<div class="badges"><span class="badge ' + (paid ? 'paid' : '') + '">' + (paid ? 'שולם' : 'ממתין לתשלום') + '</span>' +
+      '<div class="badges"><span class="badge ' + (paid ? 'paid' : '') + '">' + (o.payment?.provider === 'credit' ? 'בהקפה · ' + esc(o.credit?.name || '') : paid ? 'שולם' : 'ממתין לתשלום') + '</span>' +
       '<span class="badge ' + (ful === 'shipped' || ful === 'delivered' ? 'shipped' : ful === 'cancelled' ? 'cancelled' : '') + '">' + FUL_HE[ful] + '</span></div>' +
       '<button class="toggle" type="button">פרטים והזמנה ▾</button>' +
       '<div class="details">' +
-      '<div class="contact">' + (c.phone ? 'טלפון: <a href="tel:' + c.phone + '">' + c.phone + '</a><br>' : '') + (addr ? 'כתובת: ' + addr + '<br>' : '') + (c.notes ? 'הערה: ' + c.notes : '') + '</div>' +
+      '<div class="contact">' + (c.phone ? 'טלפון: <a href="tel:' + esc(c.phone) + '">' + esc(c.phone) + '</a><br>' : '') + (addr ? 'כתובת: ' + esc(addr) + '<br>' : '') + (c.notes ? 'הערה: ' + esc(c.notes) : '') + '</div>' +
       '<ul>' + items + '</ul>' +
       '<div class="actions">' +
       '<button class="btn" data-act="paid" ' + (canPay ? '' : 'disabled') + '>' + (paid ? 'שולם ✓' : 'סמן כשולם') + '</button>' +
@@ -227,6 +231,10 @@ async function updateOrder(i, act, btn) {
   const o = orders[i];
   if (act === 'cancelled' && !window.confirm('לבטל את ההזמנה ולהחזיר את המוצרים למלאי?')) return;
   const body = { paymentStatus: act === 'paid' ? 'paid' : (o.payment && o.payment.status) || 'pending', fulfillmentStatus: ['shipped','delivered','cancelled'].includes(act) ? act : getFulfillment(o) };
+  if (act === 'delivered' && o.payment?.provider === 'credit') {
+    if (!window.creditDeliveryDecision) { showErr('רכיב ההקפה נטען. רעננו ונסו שוב.'); return; }
+    const creditDecision = await window.creditDeliveryDecision(o); if (!creditDecision) return; body.creditDecision = creditDecision;
+  }
   btn.disabled = true; btn.textContent = 'שומר…';
   try {
     await api('/admin/orders/' + o._id + '/status', { method: 'PATCH', body });
@@ -250,6 +258,7 @@ function connectWs() {
   ws.onmessage = (m) => {
     try {
       const { event, payload } = JSON.parse(m.data);
+      if (event === 'creditUpdated') window.dispatchEvent(new Event('manager-credit-refresh'));
       if (event === 'newOrder') {
         const b = $('banner');
         b.textContent = '🔔 הזמנה חדשה התקבלה' + (payload && payload.total != null ? ' · ' + Number(payload.total).toFixed(2) + '₪' : '') + '!';
@@ -270,6 +279,7 @@ function showApp() {
 }
 function logout() {
   token = ''; adminName = '';
+  window.dispatchEvent(new CustomEvent('manager-credit-auth', { detail: { token: '', disabled: true } }));
   localStorage.removeItem('hmgr_token'); localStorage.removeItem('hmgr_name');
   if (ws) { const w = ws; ws = null; try { w.close(); } catch {} }
   $('ordersView').style.display = 'none'; $('loginView').style.display = 'block'; $('who').textContent = '';
@@ -357,5 +367,6 @@ $('logoutBtn').addEventListener('click', logout);
 
 if (token) showApp();
 </script>
+<script type="module" src="/manager/credit-assets/credit.js"></script>
 </body>
 </html>
