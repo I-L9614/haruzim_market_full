@@ -29,6 +29,7 @@ const productSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   description: { type: String, trim: true },
   imageUrl: { type: String, trim: true, maxlength: 2000 },
+  imageId: { type: String, default: null },
   category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
   price: { type: Number, required: true, min: 0 },
   unitType: { type: String, enum: ['units', 'weight'], default: 'units' },
@@ -38,6 +39,13 @@ const productSchema = new mongoose.Schema({
   promotion: { label: String, price: Number }
 }, { timestamps: true });
 productSchema.index({ name: 'text', description: 'text' });
+
+const productImageSchema = new mongoose.Schema({
+  data: { type: String, required: true },
+  contentType: { type: String, required: true, enum: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] },
+  size: { type: Number, required: true, min: 1 },
+  createdBy: { type: String, default: '' }
+}, { timestamps: { createdAt: true, updatedAt: false } });
 
 const orderItemSchema = new mongoose.Schema({
   product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
@@ -114,6 +122,7 @@ export function registerModelsOn(connection) {
     User: connection.model('User', userSchema),
     Category: connection.model('Category', categorySchema),
     Product: connection.model('Product', productSchema),
+    ProductImage: connection.model('ProductImage', productImageSchema),
     Order: connection.model('Order', orderSchema),
     Admin: connection.model('Admin', adminSchema),
     StorefrontConfig: connection.model('StorefrontConfig', storefrontConfigSchema)

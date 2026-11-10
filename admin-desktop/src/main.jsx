@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { connectRealtime } from './realtime-client';
 import { apiFetch, apiErrorMessage, parseJson } from './apiError';
-import { BellRing, DollarSign, ShoppingBag, PackageCheck, TrendingUp, ShieldCheck, LogIn, Phone, MapPin, RefreshCw, Users, UserPlus, UserMinus } from 'lucide-react';
+import { BellRing, DollarSign, ShoppingBag, PackageCheck, TrendingUp, ShieldCheck, LogIn, Phone, MapPin, RefreshCw, Users, UserPlus, UserMinus, Search, ImagePlus } from 'lucide-react';
 import './styles.css';
 import ErrorBoundary from './ErrorBoundary';
 import CreditAccounts, { CreditDecision } from './CreditAccounts';
@@ -71,13 +71,19 @@ function App() {
   const [managerBusy, setManagerBusy] = useState(false);
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState(null);
-  const [productForm, setProductForm] = useState({ name: '', description: '', category: '', price: '', promotionPrice: '', unitType: 'units', stockQuantity: '', imageUrl: '', active: true });
+  const [productForm, setProductForm] = useState({ name: '', description: '', category: '', price: '', promotionPrice: '', unitType: 'units', stockQuantity: '', imageUrl: '', imageId: null, active: true });
+  const [imageFile, setImageFile] = useState(null);
+  const [removeUploadedImage, setRemoveUploadedImage] = useState(false);
+  const [inventoryQuery, setInventoryQuery] = useState('');
+  const [profile, setProfile] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('haruzim-admin-profile') || 'null'); } catch { return null; }
+  });
   const [productError, setProductError] = useState('');
   const [productBusy, setProductBusy] = useState(false);
   const [inlineProductDrafts, setInlineProductDrafts] = useState({});
   const [savingInlineProductId, setSavingInlineProductId] = useState('');
   const [isShabbatClosed, setIsShabbatClosed] = useState(false);
-  const isOwner = getTokenRole(token) === 'admin';
+  const isOwner = (profile?.role || getTokenRole(token)) === 'admin';
 
   useEffect(() => {
     if (!token || API_CONFIGURATION_ERROR) {
@@ -175,11 +181,23 @@ function App() {
       setIsShabbatClosed(Boolean(data.isShabbat));
     };
 
+    const fetchProfile = async () => {
+      try {
+        const response = await apiFetch(`${API_BASE}/auth/admin/me`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!response.ok) return;
+        const data = await parseJson(response);
+        if (data?.admin) {
+          setProfile(data.admin);
+          localStorage.setItem('haruzim-admin-profile', JSON.stringify(data.admin));
+        }
+      } catch { /* identity display only */ }
+    };
+
     const initData = async () => {
       setLoading(true);
       setError('');
       try {
-        await Promise.all([fetchStats(), fetchOrders(), fetchProducts(), fetchFeaturedSelection(), fetchShabbatStatus(), isOwner ? fetchManagers() : Promise.resolve()]);
+        await Promise.all([fetchStats(), fetchOrders(), fetchProducts(), fetchFeaturedSelection(), fetchShabbatStatus(), fetchProfile(), isOwner ? fetchManagers() : Promise.resolve()]);
       } catch (fetchError) {
         setError(fetchError.message || 'שגיאה בטעינת הנתונים.');
         if (fetchError.message?.includes('פג תוקף')) {
@@ -221,6 +239,10 @@ function App() {
       const data = await parseJson(response);
       if (!response.ok) throw new Error(apiErrorMessage(response, data, 'ההתחברות נכשלה.'));
       localStorage.setItem('haruzim-admin-token', data.token);
+      if (data.admin) {
+        setProfile(data.admin);
+        localStorage.setItem('haruzim-admin-profile', JSON.stringify(data.admin));
+      }
       setToken(data.token);
       setLogin({ email: '', password: '' });
     } catch (loginFailure) {
@@ -273,9 +295,64 @@ function App() {
     }
   };
 
+  const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
+
+  const resetImagePick = () => { setImageFile(null); setRemoveUploadedImage(false); };
+
+  const readAndShrinkImage = (file) => new Promise((resolve, reject) => {
+    if (!file || !IMAGE_ACCEPT.split(',').includes(file.type)) { reject(new Error('סוג הקובץ אינו נתמך. אפשר להעלות JPG, PNG, WebP או GIF.')); return; }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('לא ניתן לקרוא את הקובץ.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('קובץ התמונה אינו תקין.'));
+      img.onload = () => {
+        let { width, height } = img;
+        const maxDim = 1000;
+        if (Math.max(width, height) > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.max(1, Math.round(width * scale));
+          height = Math.max(1, Math.round(height * scale));
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        let dataUrl = (file.type === 'image/png' || file.type === 'image/gif') && file.size < 400 * 1024
+          ? canvas.toDataURL(file.type)
+          : canvas.toDataURL('image/jpeg', 0.85);
+        let quality = 0.7;
+        while (dataUrl.length > 1250000 && quality > 0.35) {
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+          quality -= 0.15;
+        }
+        const base64 = dataUrl.split(',')[1] || '';
+        if (base64.length > 990000) { reject(new Error('התמונה גדולה מדי גם אחרי כיווץ. נסו תמונה קטנה יותר.')); return; }
+        resolve({ dataUrl, base64, contentType: dataUrl.slice(5, dataUrl.indexOf(';')), name: file.name });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  const pickProductImage = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setProductError('');
+    try {
+      const picked = await readAndShrinkImage(file);
+      setImageFile(picked);
+      setRemoveUploadedImage(false);
+    } catch (pickError) {
+      setProductError(pickError.message || 'לא ניתן לטעון את התמונה.');
+    }
+  };
+
   const openNewProduct = () => {
     setEditingProductId(null);
-    setProductForm({ name: '', description: '', category: categories[0]?._id || '', price: '', promotionPrice: '', unitType: 'units', stockQuantity: '', imageUrl: '', active: true });
+    setProductForm({ name: '', description: '', category: categories[0]?._id || '', price: '', promotionPrice: '', unitType: 'units', stockQuantity: '', imageUrl: '', imageId: null, active: true });
+    resetImagePick();
     setProductError('');
     setProductModalOpen(true);
   };
@@ -290,9 +367,11 @@ function App() {
       promotionPrice: product.promotion?.price == null ? '' : String(product.promotion.price),
       unitType: product.unitType || 'units',
       stockQuantity: product.stockQuantity == null ? '' : String(product.stockQuantity),
-      imageUrl: product.imageUrl || '',
+      imageUrl: product.sourceImageUrl ?? product.imageUrl ?? '',
+      imageId: product.imageId || null,
       active: product.active !== false
     });
+    resetImagePick();
     setProductError('');
     setProductModalOpen(true);
   };
@@ -302,13 +381,25 @@ function App() {
     if (isShabbatClosed) { setProductError('החנות סגורה בשבת. עדכון מלאי יתאפשר לאחר צאת השבת.'); return; }
     setProductError('');
     setProductBusy(true);
-    const payload = {
-      ...productForm,
-      price: Number(productForm.price),
-      promotionPrice: productForm.promotionPrice === '' ? null : Number(productForm.promotionPrice),
-      stockQuantity: productForm.stockQuantity === '' ? null : Number(productForm.stockQuantity)
-    };
     try {
+      let imageId = removeUploadedImage ? null : (productForm.imageId || null);
+      if (imageFile) {
+        const uploadResponse = await apiFetch(`${API_BASE}/admin/images`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ data: imageFile.base64, contentType: imageFile.contentType })
+        });
+        const uploadData = await parseJson(uploadResponse);
+        if (!uploadResponse.ok) throw new Error(apiErrorMessage(uploadResponse, uploadData, 'העלאת התמונה נכשלה. נסו שוב.'));
+        imageId = uploadData.imageId;
+      }
+      const payload = {
+        ...productForm,
+        imageId,
+        price: Number(productForm.price),
+        promotionPrice: productForm.promotionPrice === '' ? null : Number(productForm.promotionPrice),
+        stockQuantity: productForm.stockQuantity === '' ? null : Number(productForm.stockQuantity)
+      };
       const editing = Boolean(editingProductId);
       const response = await apiFetch(editing ? `${API_BASE}/admin/products/${editingProductId}` : `${API_BASE}/admin/products`, {
         method: editing ? 'PUT' : 'POST',
@@ -320,6 +411,7 @@ function App() {
       setProducts((previous) => editing
         ? previous.map((item) => String(item._id) === String(data.product._id) ? data.product : item)
         : [...previous, data.product].sort((a, b) => a.name.localeCompare(b.name, 'he')));
+      resetImagePick();
       setProductModalOpen(false);
     } catch (saveError) {
       setProductError(saveError.message || 'שגיאה בשמירת המוצר.');
@@ -345,7 +437,8 @@ function App() {
           promotionPrice: product.promotion?.price ?? null,
           unitType: product.unitType || 'units',
           stockQuantity: product.stockQuantity,
-          imageUrl: product.imageUrl || '',
+          imageUrl: product.sourceImageUrl ?? product.imageUrl ?? '',
+          imageId: product.imageId ?? null,
           active
         })
       });
@@ -390,7 +483,8 @@ function App() {
           promotionPrice: product.promotion?.price ?? null,
           unitType: product.unitType || 'units',
           stockQuantity: draft.stockQuantity === '' ? null : Number(draft.stockQuantity),
-          imageUrl: product.imageUrl || '',
+          imageUrl: product.sourceImageUrl ?? product.imageUrl ?? '',
+          imageId: product.imageId ?? null,
           active: product.active !== false
         })
       });
@@ -503,6 +597,8 @@ function App() {
 
   const signOut = () => {
     localStorage.removeItem('haruzim-admin-token');
+    localStorage.removeItem('haruzim-admin-profile');
+    setProfile(null);
     setToken('');
     setOrders([]);
     setNextOrderCursor(null);
@@ -528,6 +624,11 @@ function App() {
   const visibleOrders = orders.filter((order) => orderFilter === 'all' || (orderFilter === 'history' ? isOrderComplete(order) : !isOrderComplete(order)));
   const statusLabels = { pending_payment: 'ממתין לתשלום', pending: 'ממתין לטיפול', preparing: 'בהכנה', shipped: 'נשלח', delivered: 'נמסר', cancelled: 'בוטל' };
   const scrollToSection = (id) => { setActiveSection(id); setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); };
+
+  const normalizedInventoryQuery = inventoryQuery.trim().toLowerCase();
+  const visibleProducts = normalizedInventoryQuery
+    ? products.filter((product) => (product.name || '').toLowerCase().includes(normalizedInventoryQuery) || (product.category?.name || '').toLowerCase().includes(normalizedInventoryQuery))
+    : products;
 
   if (!token) {
     return (
@@ -565,6 +666,13 @@ function App() {
           <button className={`nav-item ${activeSection === 'connection' ? 'active' : ''}`} onClick={() => scrollToSection('connection')}>חיבור מערכת</button>
           {isOwner && <button className={`nav-item ${activeSection === 'managers' ? 'active' : ''}`} onClick={() => scrollToSection('managers')}>ניהול מנהלים</button>}
         </nav>
+        {profile && (
+          <div className="sidebar-identity">
+            <small>מחובר כ</small>
+            <strong>{profile.name || profile.email}</strong>
+            <small>{profile.email}{profile.email ? ' · ' : ''}{profile.role === 'admin' ? 'מנהל ראשי' : 'מנהל'}</small>
+          </div>
+        )}
       </aside>
 
       <main className="admin-main">
@@ -712,11 +820,18 @@ function App() {
                   <div className="featured-select-form"><label>מוצר בולט בראש האתר<select disabled={isShabbatClosed} value={featuredProductId} onChange={(event) => setFeaturedProductId(event.target.value)}><option value="">ללא מוצר מובלט</option>{products.filter((product) => product.active && (product.stockQuantity == null || Number(product.stockQuantity) > 0)).map((product) => <option key={product._id} value={product._id}>{product.name}</option>)}</select></label><button className="secondary-btn" type="button" disabled={productBusy || isShabbatClosed} onClick={saveFeaturedProduct}>שמור בחירה</button></div>
                 </div>
                 {(categoryNotice || featuredNotice) && <p className="manager-notice" role="status">{categoryNotice || featuredNotice}</p>}
+                <div className="inventory-search-row">
+                  <label className="inventory-search-field">
+                    <Search size={16} />
+                    <input type="search" value={inventoryQuery} onChange={(event) => setInventoryQuery(event.target.value)} placeholder="חיפוש מוצר לפי שם או קטגוריה…" aria-label="חיפוש מוצר במלאי" />
+                  </label>
+                  {normalizedInventoryQuery && <span className="inventory-search-count">{visibleProducts.length} מתוך {products.length} מוצרים</span>}
+                </div>
                 <div className="inventory-table-wrap">
                   <table className="inventory-table">
                     <thead><tr><th>מוצר</th><th>קטגוריה</th><th>מחיר</th><th>מלאי</th><th>זמינות בחנות</th><th>פעולות</th></tr></thead>
                     <tbody>
-                  {products.map((product) => (
+                  {visibleProducts.map((product) => (
                     <tr key={product._id} className={product.active ? '' : 'product-inactive'}>
                       <td><div className="inventory-product-cell">{product.imageUrl ? <img src={product.imageUrl} alt={product.name || ''} /> : <span className="product-image-placeholder">{product.name?.slice(0, 1) || 'מ'}</span>}<div><strong>{product.name}</strong><small>{product.unitType === 'weight' ? 'לפי ק״ג' : 'לפי יחידה'}</small></div></div></td>
                       <td><span>{product.category?.name || '—'}</span><small className="inventory-sku">SKU: {product.sku || String(product._id).slice(-8)}</small></td>
@@ -727,6 +842,7 @@ function App() {
                     </tr>
                   ))}
                     {!products.length && <tr><td colSpan="6" className="inventory-empty">אין מוצרים במלאי. אפשר להוסיף מוצר חדש.</td></tr>}
+                    {!!products.length && !visibleProducts.length && <tr><td colSpan="6" className="inventory-empty">לא נמצאו מוצרים שתואמים לחיפוש ״{inventoryQuery.trim()}״.</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -774,10 +890,30 @@ function App() {
               <label>מחיר מבצע (אופציונלי)<input type="number" min="0" step="0.01" value={productForm.promotionPrice} onChange={(event) => setProductForm((previous) => ({ ...previous, promotionPrice: event.target.value }))} placeholder="ללא מבצע" /></label>
               <label>סוג מכירה<select value={productForm.unitType} onChange={(event) => setProductForm((previous) => ({ ...previous, unitType: event.target.value }))}><option value="units">יחידות</option><option value="weight">משקל (ק״ג)</option></select></label>
               <label>כמות במלאי ({productForm.unitType === 'weight' ? 'ק״ג' : 'יחידות'})<input type="number" min="0" max="1000000" step={productForm.unitType === 'weight' ? '0.01' : '1'} placeholder="ללא הגבלה" value={productForm.stockQuantity} onChange={(event) => setProductForm((previous) => ({ ...previous, stockQuantity: event.target.value }))} /></label>
-              <label className="product-image-url-field">קישור לתמונה<input type="url" maxLength="2000" value={productForm.imageUrl} onChange={(event) => setProductForm((previous) => ({ ...previous, imageUrl: event.target.value }))} placeholder="https://example.com/product.jpg" /></label>
+              <div className="product-image-upload-field">
+                <span className="product-image-upload-label">תמונת מוצר</span>
+                {imageFile || (productForm.imageId && !removeUploadedImage) ? (
+                  <div className="product-image-uploaded">
+                    <img src={imageFile ? imageFile.dataUrl : `${API_BASE}/images/${productForm.imageId}`} alt="תמונת המוצר שהועלתה" onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }} />
+                    <div className="product-image-uploaded-text">
+                      <strong>{imageFile ? 'התמונה החדשה תועלה בשמירה' : 'יש תמונה שהועלתה'}</strong>
+                      <small>התמונה שהועלתה מוצגת בחנות{productForm.imageUrl ? '; הקישור יוצג רק אם תסירו אותה' : ''}.</small>
+                    </div>
+                    <button type="button" className="secondary-btn" disabled={productBusy || isShabbatClosed} onClick={() => { if (imageFile) setImageFile(null); else setRemoveUploadedImage(true); }}>{imageFile ? 'ביטול הבחירה' : 'הסרת התמונה'}</button>
+                  </div>
+                ) : (
+                  <label className="product-image-picker">
+                    <ImagePlus size={18} />
+                    <span>{removeUploadedImage ? 'התמונה שהועלתה תוסר בשמירה. לבחור תמונה אחרת?' : 'העלאת תמונה מהמחשב'}</span>
+                    {removeUploadedImage && <button type="button" className="secondary-btn" onClick={(event) => { event.preventDefault(); setRemoveUploadedImage(false); }}>השארת התמונה הקיימת</button>}
+                    <input type="file" accept={IMAGE_ACCEPT} onChange={pickProductImage} className="visually-hidden" disabled={productBusy || isShabbatClosed} />
+                  </label>
+                )}
+              </div>
+              <label className="product-image-url-field">קישור לתמונה (אופציונלי)<input type="url" maxLength="2000" value={productForm.imageUrl} onChange={(event) => setProductForm((previous) => ({ ...previous, imageUrl: event.target.value }))} placeholder="https://example.com/product.jpg" /></label>
               <label className="product-description-field">תיאור (אופציונלי)<textarea rows="3" maxLength="2000" value={productForm.description} onChange={(event) => setProductForm((previous) => ({ ...previous, description: event.target.value }))} /></label>
             </div>
-            {productForm.imageUrl && <div className="product-image-preview"><img src={productForm.imageUrl} alt="תצוגה מקדימה של המוצר" onError={(event) => { event.currentTarget.style.display = 'none'; }} /><span>תצוגה מקדימה</span></div>}
+            {productForm.imageUrl && !(imageFile || (productForm.imageId && !removeUploadedImage)) && <div className="product-image-preview"><img src={productForm.imageUrl} alt="תצוגה מקדימה של המוצר" onError={(event) => { event.currentTarget.style.display = 'none'; }} /><span>תצוגה מקדימה מהקישור</span></div>}
             {productError && <p className="error-banner" role="alert">{productError}</p>}
             {!categories.length && <p className="error-banner" role="alert">אין קטגוריות פעילות. יש להוסיף קטגוריה לפני יצירת מוצר.</p>}
             <div className="product-modal-actions"><button type="button" className="modal-cancel-btn" disabled={productBusy} onClick={() => setProductModalOpen(false)}>ביטול</button><button type="submit" className="primary-btn" disabled={productBusy || isShabbatClosed || !categories.length}>{productBusy ? 'שומר…' : editingProductId ? 'שמירת שינויים' : 'יצירת מוצר'}</button></div>

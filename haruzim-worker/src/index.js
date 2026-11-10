@@ -38,6 +38,37 @@ async function readBody(c) {
   try { return await c.req.json(); } catch { return {}; }
 }
 
+// ---------- product images ----------
+const IMAGE_TYPES = {
+  'image/jpeg': [0xff, 0xd8, 0xff],
+  'image/png': [0x89, 0x50, 0x4e, 0x47],
+  'image/webp': [0x52, 0x49, 0x46, 0x46],
+  'image/gif': [0x47, 0x49, 0x46, 0x38]
+};
+const MAX_IMAGE_BYTES = 700 * 1024;
+const MAX_IMAGE_BASE64 = 1000000;
+
+function base64ToBytes(base64) {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function imageOrigin(c) {
+  return new URL(c.req.url).origin;
+}
+
+// Responses expose imageUrl as the EFFECTIVE image (an uploaded image wins over
+// the URL fallback); sourceImageUrl keeps the raw URL so edit forms don't lose it.
+function withEffectiveImage(c, product) {
+  if (!product) return product;
+  const plain = typeof product.toObject === 'function' ? product.toObject() : { ...product };
+  plain.sourceImageUrl = plain.imageUrl || '';
+  if (plain.imageId) plain.imageUrl = `${imageOrigin(c)}/api/images/${plain.imageId}`;
+  return plain;
+}
+
 function containsUnsafeMongoKey(value) {
   if (Array.isArray(value)) return value.some(containsUnsafeMongoKey);
   if (!value || typeof value !== 'object') return false;
@@ -209,7 +240,7 @@ app.get('/api/catalog', async (c) => {
   if (c.req.query('category')) filter.category = c.req.query('category');
   if (c.req.query('search')) filter.$text = { $search: c.req.query('search') };
   const products = await Product.find(filter).populate('category', 'name slug').sort({ name: 1 });
-  return c.json({ products });
+  return c.json({ products: products.map((product) => withEffectiveImage(c, product)) });
 });
 
 app.get('/api/categories', async (c) => {
@@ -226,7 +257,7 @@ app.get('/api/featured-product', async (c) => {
     _id: config.featuredProduct, active: true,
     $or: [{ stockQuantity: { $gt: 0 } }, { stockQuantity: null }, { stockQuantity: { $exists: false } }]
   }).populate('category', 'name slug').lean();
-  return c.json({ product: product || null });
+  return c.json({ product: product ? withEffectiveImage(c, product) : null });
 });
 
 // ---------- credit accounts: manager-only and isolated from customer login ----------
@@ -806,6 +837,50 @@ app.delete('/api/admin/managers/:id', requireAuth, ownerOnly, shabbatGuard, asyn
   return c.json({ manager });
 });
 
+// ---------- admin: product images ----------
+app.post('/api/admin/images', requireAuth, adminOnly, shabbatGuard, async (c) => {
+  const body = (await readBody(c)) || {};
+  const contentType = String(body.contentType || '').toLowerCase();
+  const base64 = String(body.data || '').replace(/\s/g, '');
+  if (!IMAGE_TYPES[contentType]) return c.json({ error: 'INVALID_IMAGE_TYPE', message: 'סוג הקובץ אינו נתמך. אפשר להעלות JPG, PNG, WebP או GIF.' }, 400);
+  if (!base64 || base64.length > MAX_IMAGE_BASE64 || !/^[A-Za-z0-9+/=]+$/.test(base64)) return c.json({ error: 'INVALID_IMAGE', message: 'קובץ התמונה אינו תקין או גדול מדי.' }, 400);
+  let bytes;
+  try { bytes = base64ToBytes(base64); } catch { return c.json({ error: 'INVALID_IMAGE', message: 'קובץ התמונה אינו תקין.' }, 400); }
+  if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) return c.json({ error: 'IMAGE_TOO_LARGE', message: 'התמונה גדולה מדי. נסו תמונה קטנה יותר.' }, 400);
+  const magic = IMAGE_TYPES[contentType];
+  const magicOk = magic.every((b, i) => bytes[i] === b) && (contentType !== 'image/webp' || (bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50));
+  if (!magicOk) return c.json({ error: 'INVALID_IMAGE', message: 'תוכן הקובץ אינו תואם לסוג התמונה.' }, 400);
+  const { ProductImage } = c.get('db').models;
+  const user = c.get('user');
+  const image = await ProductImage.create({ data: base64, contentType, size: bytes.length, createdBy: user?.email || '' });
+  const id = String(image._id);
+  return c.json({ imageId: id, url: `${imageOrigin(c)}/api/images/${id}` }, 201);
+});
+
+app.get('/api/images/:id', async (c) => {
+  const id = c.req.param('id');
+  if (!isValidObjectId(id)) return c.json({ error: 'IMAGE_NOT_FOUND', message: 'התמונה לא נמצאה.' }, 404);
+  const { ProductImage } = c.get('db').models;
+  const image = await ProductImage.findById(id).lean();
+  if (!image) return c.json({ error: 'IMAGE_NOT_FOUND', message: 'התמונה לא נמצאה.' }, 404);
+  let bytes;
+  try { bytes = base64ToBytes(image.data); } catch { return c.json({ error: 'IMAGE_NOT_FOUND', message: 'התמונה לא נמצאה.' }, 404); }
+  return c.body(bytes, 200, {
+    'Content-Type': image.contentType,
+    'Content-Length': String(bytes.length),
+    'Cache-Control': 'public, max-age=31536000, immutable'
+  });
+});
+
+app.delete('/api/admin/images/:id', requireAuth, adminOnly, shabbatGuard, async (c) => {
+  const id = c.req.param('id');
+  if (!isValidObjectId(id)) return c.json({ error: 'INVALID_IMAGE_ID', message: 'מזהה התמונה אינו תקין.' }, 400);
+  const { ProductImage } = c.get('db').models;
+  const deleted = await ProductImage.findByIdAndDelete(id);
+  if (!deleted) return c.json({ error: 'IMAGE_NOT_FOUND', message: 'התמונה לא נמצאה.' }, 404);
+  return c.json({ deleted: true });
+});
+
 // ---------- admin: products + catalog ----------
 function validateProductInput(body) {
   const name = String(body?.name || '').trim();
@@ -816,6 +891,8 @@ function validateProductInput(body) {
   const unitType = body?.unitType || 'units';
   const promotionPrice = body?.promotionPrice === '' || body?.promotionPrice === null || body?.promotionPrice === undefined ? null : Number(body.promotionPrice);
   const imageUrl = String(body?.imageUrl || '').trim();
+  const rawImageId = body?.imageId;
+  const imageId = rawImageId === undefined ? undefined : (rawImageId === null || rawImageId === '' ? null : String(rawImageId));
 
   if (name.length < 2 || name.length > 160) return { error: 'יש להזין שם מוצר באורך 2–160 תווים.' };
   if (!isValidObjectId(category)) return { error: 'יש לבחור קטגוריה תקינה.' };
@@ -825,12 +902,13 @@ function validateProductInput(body) {
   if (unitType === 'units' && stockQuantity !== null && !Number.isInteger(stockQuantity)) return { error: 'מלאי של מוצר הנמכר ביחידות חייב להיות מספר שלם.' };
   if (promotionPrice !== null && (!Number.isFinite(promotionPrice) || promotionPrice < 0 || promotionPrice >= price)) return { error: 'מחיר המבצע חייב להיות תקין ונמוך מהמחיר הרגיל.' };
   if (imageUrl && (!/^https?:\/\//i.test(imageUrl) || imageUrl.length > 2000)) return { error: 'כתובת התמונה חייבת להתחיל ב-http:// או https://.' };
+  if (imageId !== undefined && imageId !== null && !isValidObjectId(imageId)) return { error: 'מזהה התמונה שהועלתה אינו תקין.' };
 
   return {
     value: {
       name,
       description: String(body.description || '').trim().slice(0, 2000),
-      imageUrl, category, price,
+      imageUrl, ...(imageId !== undefined ? { imageId } : {}), category, price,
       promotion: promotionPrice === null ? undefined : { label: 'מבצע', price: promotionPrice },
       unitType,
       unitLabel: unitType === 'weight' ? 'ק״ג' : 'יחידה',
@@ -844,7 +922,7 @@ app.get('/api/admin/products', requireAuth, adminOnly, async (c) => {
   const { Product, Category } = c.get('db').models;
   const products = await Product.find({}).populate('category', 'name slug').sort({ active: -1, name: 1 }).lean();
   const categories = await Category.find({ active: true }).select('name slug').sort({ name: 1 }).lean();
-  return c.json({ products, categories });
+  return c.json({ products: products.map((product) => withEffectiveImage(c, product)), categories });
 });
 
 app.post('/api/admin/products', requireAuth, adminOnly, shabbatGuard, async (c) => {
@@ -855,7 +933,7 @@ app.post('/api/admin/products', requireAuth, adminOnly, shabbatGuard, async (c) 
   if (!categoryExists) return c.json({ error: 'INVALID_CATEGORY', message: 'הקטגוריה אינה קיימת או אינה פעילה.' }, 400);
   const product = await Product.create(validated.value);
   await product.populate('category', 'name slug');
-  return c.json({ product }, 201);
+  return c.json({ product: withEffectiveImage(c, product) }, 201);
 });
 
 const updateProductHandler = async (c) => {
@@ -865,11 +943,18 @@ const updateProductHandler = async (c) => {
   const { Product, Category } = c.get('db').models;
   const categoryExists = await Category.exists({ _id: validated.value.category, active: true });
   if (!categoryExists) return c.json({ error: 'INVALID_CATEGORY', message: 'הקטגוריה אינה קיימת או אינה פעילה.' }, 400);
+  const previous = await Product.findById(c.req.param('id')).select('imageId').lean();
   const update = { $set: validated.value };
   if (validated.value.promotion === undefined) update.$unset = { promotion: 1 };
   const product = await Product.findByIdAndUpdate(c.req.param('id'), update, { new: true, runValidators: true }).populate('category', 'name slug');
   if (!product) return c.json({ error: 'PRODUCT_NOT_FOUND', message: 'המוצר לא נמצא.' }, 404);
-  return c.json({ product });
+  const oldImageId = previous?.imageId ? String(previous.imageId) : null;
+  const newImageId = validated.value.imageId === undefined ? oldImageId : validated.value.imageId;
+  if (oldImageId && newImageId !== oldImageId) {
+    const { ProductImage } = c.get('db').models;
+    await ProductImage.deleteOne({ _id: oldImageId }).catch(() => {});
+  }
+  return c.json({ product: withEffectiveImage(c, product) });
 };
 app.put('/api/admin/products/:id', requireAuth, adminOnly, shabbatGuard, updateProductHandler);
 app.patch('/api/admin/products/:id', requireAuth, adminOnly, shabbatGuard, updateProductHandler);
