@@ -31,6 +31,11 @@
   .btn:disabled { opacity: .45; cursor: default; }
   .btn-outline { background: #f1f7ec; color: #2e6b3f; border: 1.5px solid #28543b2e; }
   .err { background: #fdeaea; color: #8f1f1f; border-radius: 10px; padding: 10px 12px; font-size: .85rem; margin-bottom: 12px; }
+  .file-btn { display: block; text-align: center; padding: 12px; border: 1.5px dashed #28543b4d; border-radius: 12px; background: #f1f7ec; color: #2e6b3f; font-size: .9rem; }
+  .img-preview { display: flex; align-items: center; gap: 10px; margin: -4px 0 12px; }
+  .img-preview img { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; border: 1.5px solid #28543b2e; }
+  .img-preview button { border: 1.5px solid #28543b2e; background: #f1f7ec; color: #2e6b3f; border-radius: 10px; padding: 8px 12px; font-size: .85rem; font-weight: 700; }
+  .img-note { font-size: .75rem; color: #5c6b52; margin: -6px 0 12px; }
   .banner { background: #fdf0dc; color: #8a5a00; border-radius: 12px; padding: 12px 14px; font-weight: 800; font-size: .9rem; margin-bottom: 12px; display: none; }
   .banner.show { display: block; }
   .shabbat { background: #eef1f6; color: #4a5468; border-radius: 12px; padding: 10px 14px; font-size: .82rem; margin-bottom: 12px; display: none; }
@@ -118,7 +123,10 @@
             <label>נמכר ב-<select id="pUnit"><option value="units">יחידות</option><option value="weight">ק״ג (משקל)</option></select></label>
             <label>מלאי (לא חובה)<input id="pStock" type="number" min="0" max="1000000" step="any" inputmode="decimal"></label>
           </div>
+          <label class="file-btn">העלאת תמונה מהטלפון או מהמחשב (לא חובה)<input id="pImgFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden></label>
+          <div class="img-preview" id="pImgPreview" style="display:none"><img id="pImgPreviewImg" alt="תצוגה מקדימה של התמונה שבחרתם"><button type="button" id="pImgClear">ביטול הבחירה</button></div>
           <label>כתובת תמונה (לא חובה)<input id="pImg" type="url" inputmode="url" placeholder="https://" dir="ltr"></label>
+          <p class="img-note">אם מועלית תמונה וגם מוזן קישור - התמונה שהועלתה תוצג בחנות, והקישור יישמר כגיבוי.</p>
           <label>תיאור (לא חובה)<textarea id="pDesc" rows="2" maxlength="2000"></textarea></label>
           <button class="btn" type="submit" id="prodBtn">הוסף מוצר</button>
         </form>
@@ -326,6 +334,58 @@ $('catForm').addEventListener('submit', async (e) => {
   } catch (e2) { showErr(e2.message); }
   btn.disabled = shabbatClosed; btn.textContent = 'צור קטגוריה';
 });
+let pendingImage = null;
+const IMAGE_ACCEPT = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+function readAndShrinkImage(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !IMAGE_ACCEPT.includes(file.type)) { reject(new Error('סוג הקובץ אינו נתמך. אפשר להעלות JPG, PNG, WebP או GIF.')); return; }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('לא ניתן לקרוא את הקובץ.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('קובץ התמונה אינו תקין.'));
+      img.onload = () => {
+        let width = img.width, height = img.height;
+        const maxDim = 1000;
+        if (Math.max(width, height) > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.max(1, Math.round(width * scale));
+          height = Math.max(1, Math.round(height * scale));
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        let dataUrl = (file.type === 'image/png' || file.type === 'image/gif') && file.size < 400 * 1024
+          ? canvas.toDataURL(file.type)
+          : canvas.toDataURL('image/jpeg', 0.85);
+        let quality = 0.7;
+        while (dataUrl.length > 1250000 && quality > 0.35) {
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+          quality -= 0.15;
+        }
+        const base64 = dataUrl.split(',')[1] || '';
+        if (base64.length > 990000) { reject(new Error('התמונה גדולה מדי גם אחרי כיווץ. נסו תמונה קטנה יותר.')); return; }
+        resolve({ dataUrl: dataUrl, base64: base64, contentType: dataUrl.slice(5, dataUrl.indexOf(';')) });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function clearPickedImage() { pendingImage = null; $('pImgPreview').style.display = 'none'; $('pImgPreviewImg').removeAttribute('src'); }
+$('pImgFile').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    pendingImage = await readAndShrinkImage(file);
+    $('pImgPreviewImg').src = pendingImage.dataUrl;
+    $('pImgPreview').style.display = 'flex';
+  } catch (err) { showErr(err.message); }
+});
+$('pImgClear').addEventListener('click', clearPickedImage);
+
 $('prodForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const v = {
@@ -342,8 +402,17 @@ $('prodForm').addEventListener('submit', async (e) => {
   if (invalid) { showErr(invalid); return; }
   const btn = $('prodBtn'); btn.disabled = true; btn.textContent = 'מוסיף…';
   try {
-    const data = await api('/admin/products', { method: 'POST', body: v });
+    let imageId = null;
+    if (pendingImage) {
+      btn.textContent = 'מעלה תמונה…';
+      const up = await api('/admin/images', { method: 'POST', body: { data: pendingImage.base64, contentType: pendingImage.contentType } });
+      imageId = up.imageId || null;
+      btn.textContent = 'מוסיף…';
+    }
+    const body = imageId ? Object.assign({}, v, { imageId: imageId }) : v;
+    const data = await api('/admin/products', { method: 'POST', body: body });
     $('prodForm').reset();
+    clearPickedImage();
     showOk('המוצר "' + v.name + '" נוסף לחנות.');
   } catch (e2) { showErr(e2.message); }
   btn.disabled = shabbatClosed; btn.textContent = 'הוסף מוצר';
