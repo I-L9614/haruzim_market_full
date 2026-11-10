@@ -7,7 +7,9 @@ let appHandler = null;
 export function registerApp(handler) { appHandler = handler; }
 
 export class AuthDO extends DurableObject {
-  // The 'api-v1' instance serves all HTTP traffic (see index.js); the 'auth'
+  // The 'api-v2' instance serves all HTTP traffic (see index.js). Bump the id when a
+  // deploy must take effect immediately: a live DO isolate keeps its old code until
+  // evicted, and AuthDO holds no persistent state, so a fresh id is safe.; the 'auth'
   // instance only runs bcrypt through RPC.
   async fetch(request) {
     if (!appHandler) return new Response('Service unavailable', { status: 503 });

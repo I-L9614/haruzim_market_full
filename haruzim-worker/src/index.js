@@ -1058,7 +1058,7 @@ registerApp((request, env, ctx) => app.fetch(request, { ...env, SHARED_DB: '1' }
 export default {
   async fetch(request, env, ctx) {
     if (env.DIRECT_MODE === '1') return app.fetch(request, env, ctx);
-    const stub = env.AUTH_DO.get(env.AUTH_DO.idFromName('api-v1'));
+    const stub = env.AUTH_DO.get(env.AUTH_DO.idFromName('api-v2'));
     return stub.fetch(request);
   }
 };
