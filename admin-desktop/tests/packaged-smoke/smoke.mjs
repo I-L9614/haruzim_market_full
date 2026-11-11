@@ -128,24 +128,43 @@ const installText = await page.textContent('.update-modal');
 assert(installText.includes('העדכון מוכן להתקנה'), 'install approval dialog appears after download');
 await page.screenshot({ path: path.join(SHOTS, '04-install-dialog.png') });
 
-// An in-flight write must block the install (main-process enforced guard).
+// An in-flight write must block the install with its own dialog (no discard
+// is offered for a half-written record). The install dialog is already open.
 const hang = page.evaluate((port) => {
   window.__smokeAbort = new AbortController();
   return window.fetch(`http://127.0.0.1:${port}/hang`, { method: 'POST', signal: window.__smokeAbort.signal }).catch(() => 'settled');
 }, stubPort);
-await page.click('.update-modal .primary-btn'); // install dialog is already open
-await page.waitForFunction(() => document.querySelector('.update-notice')?.textContent.includes('שמירה'), null, { timeout: 5000 });
+await page.click('.update-modal .primary-btn');
+await page.waitForFunction(() => document.querySelector('.update-modal h3')?.textContent.includes('שמירות עדיין מתבצעות'), null, { timeout: 5000 });
 const blocked = await page.evaluate(() => window.haruzimDesktop?.getUpdateState?.());
-assert(blocked?.status === 'downloaded', 'install refused while a write is in flight (app kept running, state downloaded)');
+assert(blocked?.status === 'downloaded', 'in-flight write blocks the install with an explanatory dialog');
 await page.screenshot({ path: path.join(SHOTS, '05-install-blocked-pending-write.png') });
-
-// The unblocking direction (guard clears when the write settles, install
-// then proceeds and quits for the installer) is covered by the unit tests
-// and by the Windows packaged smoke with the real NSIS installer; driving
-// it here adds nothing about production behavior, since the fake installer
-// cannot execute on Linux and a quit drops CDP mid-call.
+await page.click('.update-modal .primary-btn'); // חזרה
 await page.evaluate(() => window.__smokeAbort.abort());
 try { await hang; } catch {}
+
+// Unsaved form edits require an explicit decision: back to save, discard and
+// install, or cancel. Type in the category form (marks it dirty), then try.
+await page.fill('.category-create-form input', 'קטגוריית בדיקה');
+await page.click('#updateButton');
+await page.waitForSelector('.update-modal', { timeout: 5000 });
+await page.click('.update-modal .primary-btn'); // עדכון עכשיו
+await page.waitForFunction(() => {
+  const modal = document.querySelector('.update-modal');
+  return modal?.querySelector('h3')?.textContent.includes('יש שינויים שלא נשמרו') && modal?.textContent.includes('טופס אחד עם שינויים שלא נשמרו');
+}, null, { timeout: 5000 });
+assert(true, 'dirty form routes to the explicit save/discard/cancel decision');
+await page.screenshot({ path: path.join(SHOTS, '06-install-decision-unsaved-form.png') });
+await page.click('.update-modal .primary-btn'); // חזרה לשמירה
+await page.waitForFunction(() => !document.querySelector('.update-modal'), null, { timeout: 5000 });
+
+// The main process enforces the same guard on the IPC itself: a direct
+// install call over unsaved forms is refused without the discard choice.
+const enforced = await page.evaluate(() => window.haruzimDesktop.installUpdate());
+assert(enforced?.installed === false && enforced?.reason === 'unsaved-forms', `main process refuses install over unsaved forms (${JSON.stringify(enforced)})`);
+// The discard path and the real install-and-relaunch cycle with the actual
+// NSIS installer are proven by the Windows packaged smoke (a Linux spawn of
+// the fake installer quits the app mid-call and drops CDP).
 
 console.log(`SMOKE_PASSED screenshots=${SHOTS}`);
 try { await browser.close(); } catch {}

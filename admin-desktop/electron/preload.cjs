@@ -25,8 +25,8 @@ contextBridge.exposeInMainWorld('haruzimDesktop', {
   downloadUpdate: () => {
     try { return ipcRenderer.invoke('update-download'); } catch { return Promise.resolve(null); }
   },
-  installUpdate: () => {
-    try { return ipcRenderer.invoke('update-install'); } catch { return Promise.resolve({ installed: false, reason: 'ipc-failed' }); }
+  installUpdate: (options) => {
+    try { return ipcRenderer.invoke('update-install', options || {}); } catch { return Promise.resolve({ installed: false, reason: 'ipc-failed' }); }
   },
   reportUpdateGuard: (state) => {
     try { ipcRenderer.send('update-guard-state', state || {}); } catch { /* guard reporting must never break the page */ }

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {
-  compareVersions, parseTagVersion, createGitHubFeed, createUpdateController
+  compareVersions, parseTagVersion, createGitHubFeed, createUpdateController, decideUpdateInstall
 } from '../electron/updater.js';
 
 const RELEASE = {
@@ -128,11 +128,38 @@ test('install only runs from downloaded state, then spawns installer and quits',
 test('install is blocked while writes are in flight (no app close mid-save)', async () => {
   let quit = false;
   const spawnImpl = () => ({ unref() {} });
-  const { controller } = makeController({ spawnImpl, quitApp: () => { quit = true; }, canInstall: () => ({ allow: false, reason: 'pending-writes' }) });
+  const { controller } = makeController({ spawnImpl, quitApp: () => { quit = true; }, getGuardState: () => ({ pendingWrites: 1 }) });
   await controller.check();
   await controller.download();
   assert.deepEqual(controller.install(), { installed: false, reason: 'pending-writes' });
   assert.equal(quit, false, 'app must not quit while a write is in flight');
+  // A discard choice never overrides an in-flight write.
+  assert.deepEqual(controller.install({ discardUnsaved: true }), { installed: false, reason: 'pending-writes' });
+  assert.equal(quit, false);
+});
+
+test('unsaved forms block install until the user explicitly discards them', async () => {
+  let quit = false;
+  let spawned = 0;
+  const spawnImpl = () => { spawned += 1; return { unref() {} }; };
+  const { controller } = makeController({ spawnImpl, quitApp: () => { quit = true; }, getGuardState: () => ({ dirtyForms: 1, pendingWrites: 0 }) });
+  await controller.check();
+  await controller.download();
+  assert.deepEqual(controller.install(), { installed: false, reason: 'unsaved-forms' });
+  assert.equal(spawned, 0, 'installer must not launch over unsaved forms');
+  assert.equal(quit, false);
+  assert.deepEqual(controller.install({ discardUnsaved: true }), { installed: true });
+  assert.equal(spawned, 1, 'explicit discard lets the install through');
+  assert.equal(quit, true);
+});
+
+test('decideUpdateInstall enforcement rules', () => {
+  assert.deepEqual(decideUpdateInstall(null), { allow: true });
+  assert.deepEqual(decideUpdateInstall({ dirtyForms: 0, pendingWrites: 0 }), { allow: true });
+  assert.deepEqual(decideUpdateInstall({ pendingWrites: 1 }), { allow: false, reason: 'pending-writes' });
+  assert.deepEqual(decideUpdateInstall({ pendingWrites: 1 }, { discardUnsaved: true }), { allow: false, reason: 'pending-writes' });
+  assert.deepEqual(decideUpdateInstall({ dirtyForms: 2 }), { allow: false, reason: 'unsaved-forms' });
+  assert.deepEqual(decideUpdateInstall({ dirtyForms: 2 }, { discardUnsaved: true }), { allow: true });
 });
 
 test('production feed excludes prereleases even with the highest version', async () => {

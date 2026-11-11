@@ -146,11 +146,16 @@ function sendUpdateState(state) {
   } catch { /* update reporting must never break the app */ }
 }
 
-// The renderer reports in-flight writes so an approved install never closes
-// the app mid-save (main enforces it, so no caller can bypass the dialogs).
-let updateGuardState = { pendingWrites: 0 };
+// The renderer reports work at risk (dirty forms, in-flight writes) so an
+// approved install never closes the app over unsaved work. Main enforces the
+// same rules on the update-install IPC, so no caller can bypass the dialogs.
+let updateGuardState = { dirtyForms: 0, pendingWrites: 0, pendingUploads: 0 };
 ipcMain.on('update-guard-state', (_event, state) => {
-  updateGuardState = { pendingWrites: Number(state?.pendingWrites) || 0 };
+  updateGuardState = {
+    dirtyForms: Number(state?.dirtyForms) || 0,
+    pendingWrites: Number(state?.pendingWrites) || 0,
+    pendingUploads: Number(state?.pendingUploads) || 0
+  };
 });
 
 function setupUpdates() {
@@ -168,12 +173,12 @@ function setupUpdates() {
     send: sendUpdateState,
     log: (message) => console.warn('[updates]', message),
     quitApp: () => { isQuitting = true; app.quit(); },
-    canInstall: () => (updateGuardState.pendingWrites > 0 ? { allow: false, reason: 'pending-writes' } : { allow: true })
+    getGuardState: () => updateGuardState
   });
   ipcMain.handle('update-get-state', () => updateController.getState());
   ipcMain.handle('update-check', () => updateController.check());
   ipcMain.handle('update-download', () => updateController.download());
-  ipcMain.handle('update-install', () => updateController.install());
+  ipcMain.handle('update-install', (_event, options) => updateController.install(options));
   if (app.isPackaged) {
     setTimeout(() => { updateController.check(); }, UPDATE_STARTUP_DELAY_MS).unref();
     setInterval(() => { updateController.check(); }, UPDATE_CHECK_INTERVAL_MS).unref();

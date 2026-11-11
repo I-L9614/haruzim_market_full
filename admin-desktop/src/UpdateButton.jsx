@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { updateGuard } from './updateGuard';
 
 // In-app update button in the top bar. The desktop main process owns the
 // state machine (electron/updater.js): a newer release only marks a dot on
@@ -20,7 +21,7 @@ export default function UpdateButton() {
   const bridge = window.haruzimDesktop;
   const [state, setState] = useState(null);
   const [manualCheck, setManualCheck] = useState(false);
-  const [dialog, setDialog] = useState(null); // 'download' | 'install' | null
+  const [dialog, setDialog] = useState(null); // 'download' | 'install' | 'pending-writes' | 'decision' | null
   const [notice, setNotice] = useState('');
 
   useEffect(() => {
@@ -68,16 +69,28 @@ export default function UpdateButton() {
     catch { setNotice('הורדת העדכון נכשלה. נסו שוב מאוחר יותר.'); }
   };
 
-  const approveInstall = async () => {
+  // Approving the install first checks what work is at risk: an in-flight
+  // write blocks outright (no discard is offered for a half-written record);
+  // unsaved form edits require an explicit discard choice. The main process
+  // enforces the same rules on the IPC, so a refusal here just means the
+  // state changed after the dialog opened.
+  const approveInstall = () => {
+    const guard = updateGuard.state();
+    if (guard.blocked) { setDialog('pending-writes'); return; }
+    if (guard.needsDecision) { setDialog('decision'); return; }
+    runInstall();
+  };
+
+  const runInstall = async ({ discardUnsaved = false } = {}) => {
     setDialog(null);
     try {
-      const result = await bridge.installUpdate();
-      // The main process enforces the write guard: a refusal means a save
-      // started after this dialog opened.
+      const result = await bridge.installUpdate({ discardUnsaved });
       if (result && result.installed === false) {
         setNotice(result.reason === 'pending-writes'
           ? 'יש שמירה שעדיין מתבצעת — ההתקנה תתאפשר כשתסתיים'
-          : 'התקנת העדכון נכשלה. נסו שוב.');
+          : result.reason === 'unsaved-forms'
+            ? 'יש טפסים עם שינויים שלא נשמרו'
+            : 'התקנת העדכון נכשלה. נסו שוב.');
       }
     } catch { setNotice('התקנת העדכון נכשלה. נסו שוב.'); }
   };
@@ -119,6 +132,34 @@ export default function UpdateButton() {
             <div className="update-modal-actions">
               <button type="button" className="primary-btn" onClick={approveInstall}>עדכון עכשיו</button>
               <button type="button" className="update-secondary" onClick={() => setDialog(null)}>מאוחר יותר</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dialog === 'pending-writes' && (
+        <div className="update-modal-backdrop" role="dialog" aria-modal="true" aria-label="שמירות עדיין מתבצעות">
+          <div className="update-modal">
+            <h3>שמירות עדיין מתבצעות</h3>
+            <p>לא ניתן להתקין כרגע: {updateGuard.describe()}.</p>
+            <p>ההתקנה סוגרת את האפליקציה מיד, וקטיעה באמצע שמירה עלולה להשאיר רישום חלקי. המתינו כמה שניות עד שהשמירה מסתיימת, ואז לחצו שוב על כפתור העדכון.</p>
+            <div className="update-modal-actions">
+              <button type="button" className="primary-btn" onClick={() => setDialog(null)}>חזרה</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dialog === 'decision' && (
+        <div className="update-modal-backdrop" role="dialog" aria-modal="true" aria-label="יש שינויים שלא נשמרו">
+          <div className="update-modal">
+            <h3>יש שינויים שלא נשמרו</h3>
+            <p>לפני ההתקנה צריך להחליט מה לעשות עם {updateGuard.describe()}.</p>
+            <p>ההתקנה סוגרת את האפליקציה מיד ושינויים שלא נשמרו יאבדו. הנתונים שכבר נשמרו לא ייפגעו.</p>
+            <div className="update-modal-actions">
+              <button type="button" className="primary-btn" onClick={() => setDialog(null)}>חזרה לשמירה</button>
+              <button type="button" className="update-danger" onClick={() => runInstall({ discardUnsaved: true })}>התקנה בכל זאת</button>
+              <button type="button" className="update-secondary" onClick={() => setDialog(null)}>ביטול</button>
             </div>
           </div>
         </div>

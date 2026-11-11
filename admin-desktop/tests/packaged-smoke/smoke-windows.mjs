@@ -18,6 +18,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright';
@@ -160,6 +161,62 @@ ok('real installer bytes downloaded from GitHub and SHA-256 verified by the app'
 
 await page.waitForSelector('.update-modal', { timeout: 5000 });
 captureScreen('win-04-install-dialog.png');
+
+// ---------- Work-preservation guard scenarios (same rules as unit/Linux) ----------
+// A local stub with a route that never answers simulates an in-flight write.
+const hangStub = http.createServer((req, res) => {
+  if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': '*', 'Access-Control-Allow-Headers': '*' }); res.end(); return; }
+  // /hang never answers
+});
+await new Promise((resolve) => hangStub.listen(0, '127.0.0.1', resolve));
+const hangPort = hangStub.address().port;
+
+// 1. An in-flight write blocks the install with its own dialog (no discard).
+await page.evaluate((port) => {
+  window.__smokeAbort = new AbortController();
+  window.fetch(`http://127.0.0.1:${port}/hang`, { method: 'POST', signal: window.__smokeAbort.signal }).catch(() => 'settled');
+}, hangPort);
+await sleep(1000);
+await page.click('.update-modal .primary-btn'); // עדכון עכשיו
+await page.waitForFunction(() => document.querySelector('.update-modal h3')?.textContent.includes('שמירות עדיין מתבצעות'), null, { timeout: 10000 });
+ok('in-flight write blocks the install with an explanatory dialog');
+captureScreen('win-05-install-blocked-pending-write.png');
+await page.click('.update-modal .primary-btn'); // חזרה
+await page.evaluate(() => window.__smokeAbort.abort());
+await sleep(500);
+hangStub.close();
+
+// 2. Unsaved form edits require the explicit save/discard/cancel decision.
+await page.fill('.category-create-form input', 'קטגוריית בדיקה');
+await page.click('#updateButton');
+await page.waitForSelector('.update-modal', { timeout: 5000 });
+await page.click('.update-modal .primary-btn'); // עדכון עכשיו
+await page.waitForFunction(() => {
+  const modal = document.querySelector('.update-modal');
+  return modal?.querySelector('h3')?.textContent.includes('יש שינויים שלא נשמרו') && modal?.textContent.includes('טופס אחד עם שינויים שלא נשמרו');
+}, null, { timeout: 10000 });
+ok('dirty form routes to the explicit save/discard/cancel decision');
+captureScreen('win-06-install-decision-unsaved-form.png');
+await page.click('.update-modal .primary-btn'); // חזרה לשמירה
+await page.waitForFunction(() => !document.querySelector('.update-modal'), null, { timeout: 5000 });
+
+// 3. The main process enforces the same guard on the IPC itself.
+const enforced = await page.evaluate(() => window.haruzimDesktop.installUpdate());
+if (!(enforced?.installed === false && enforced?.reason === 'unsaved-forms')) fail('main process did not refuse install over unsaved forms: ' + JSON.stringify(enforced));
+ok('main process refuses install over unsaved forms (IPC enforcement)');
+
+// 4. Clear the dirty form (submit hands it to the app; the stub 404s, which
+//    is fine - the point is the mark releases) so the real approve below
+//    exercises the plain path.
+await page.click('.category-create-form button[type="submit"]');
+await page.waitForFunction(() => {
+  const g = window.__updateGuard?.state();
+  return g && g.dirtyForms === 0 && g.pendingWrites === 0;
+}, null, { timeout: 10000 });
+ok('guard cleared after the form submit (dirty released, write settled)');
+
+await page.click('#updateButton');
+await page.waitForSelector('.update-modal', { timeout: 5000 });
 await page.click('.update-modal .primary-btn'); // approve install: app quits, installer runs /S /AUTORUN
 ok('install approved; waiting for the silent upgrade and relaunch');
 
@@ -168,7 +225,7 @@ if (!fs.existsSync(MARKER)) fail('userData marker lost in the 1.0.9 -> 9.9.9 in-
 await waitFor(appRunning, 'updated app relaunched via /AUTORUN', 30);
 ok('in-app update completed: 1.0.9 -> 9.9.9, data preserved, app relaunched');
 await sleep(4000);
-captureScreen('win-05-after-update.png');
+captureScreen('win-07-after-update.png');
 
 try { await browser.close(); } catch {}
 console.log('SMOKE_PASSED');

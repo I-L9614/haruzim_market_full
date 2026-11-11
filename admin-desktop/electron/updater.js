@@ -121,6 +121,16 @@ export const sha256File = (filePath) => new Promise((resolve, reject) => {
     .on('error', reject);
 });
 
+// Install authorization, enforced by the main process on the update-install
+// IPC so no caller can bypass the renderer's dialogs. A pending write always
+// blocks - a half-written record is never discarded. Unsaved forms block
+// too, unless the user explicitly chose "discard and install" in the dialog.
+export const decideUpdateInstall = (guardState, { discardUnsaved = false } = {}) => {
+  if ((guardState?.pendingWrites || 0) > 0) return { allow: false, reason: 'pending-writes' };
+  if ((guardState?.dirtyForms || 0) > 0 && !discardUnsaved) return { allow: false, reason: 'unsaved-forms' };
+  return { allow: true };
+};
+
 export const createUpdateController = ({
   feed = null,
   currentVersion = '0.0.0',
@@ -130,9 +140,9 @@ export const createUpdateController = ({
   log = () => {},
   quitApp = () => {},
   spawnImpl = spawn,
-  // In-flight writes (product saves, image uploads) block installation: a
-  // half-written record is never discarded by closing the app mid-save.
-  canInstall = () => ({ allow: true })
+  // Renderer-reported work at risk (dirty forms, in-flight writes). Install
+  // decisions are enforced here, in the main process - see decideUpdateInstall.
+  getGuardState = () => ({})
 } = {}) => {
   let state = { status: isPackaged && feed ? 'idle' : 'disabled', version: null, percent: null, error: null };
   let pendingRelease = null;
@@ -190,9 +200,11 @@ export const createUpdateController = ({
   // Launches the verified installer (which upgrades in place and, via
   // /AUTORUN, starts the new app) and quits this instance. Only from the
   // downloaded state - nothing installs without an approved download.
-  const install = () => {
+  // discardUnsaved is the user's explicit dialog choice to install despite
+  // unsaved form edits; it never overrides an in-flight write.
+  const install = ({ discardUnsaved = false } = {}) => {
     if (state.status !== 'downloaded' || !downloadedInstaller) return { installed: false, reason: 'not-downloaded' };
-    const guard = canInstall() || { allow: true };
+    const guard = decideUpdateInstall(getGuardState(), { discardUnsaved });
     if (!guard.allow) return { installed: false, reason: guard.reason || 'blocked' };
     // /AUTORUN starts the new app once the upgrade finishes. HARUZIM_UPDATE_SILENT
     // is an unattended-install flag used by the packaged smoke test only.

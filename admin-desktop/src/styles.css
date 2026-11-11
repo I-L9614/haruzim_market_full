@@ -541,3 +541,14 @@ button { cursor: pointer; }
   font-weight: 700;
   cursor: pointer;
 }
+.update-danger {
+  border: 1px solid rgba(239,68,68,.35);
+  border-radius: 10px;
+  padding: 9px 14px;
+  color: #fecaca;
+  background: rgba(239,68,68,.12);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.update-danger:hover { background: rgba(239,68,68,.22); }
