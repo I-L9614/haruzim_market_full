@@ -57,6 +57,7 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [notification, setNotification] = useState(null);
   const [testNotice, setTestNotice] = useState('');
+  const [testResult, setTestResult] = useState('');
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(() => localStorage.getItem('haruzim-admin-token') || '');
   const [login, setLogin] = useState({ email: '', password: '' });
@@ -628,9 +629,30 @@ function App() {
       setTestNotice('התראות בדיקה זמינות רק באפליקציית שולחן העבודה.');
       return;
     }
+    setTestResult('');
     window.haruzimDesktop.sendTestNotification();
     setTestNotice('התראת בדיקה תופיע בעוד כ־5 שניות. אפשר לסגור את החלון ב־X כדי לבדוק שהיא קופצת גם כשהאפליקציה ברקע.');
     window.setTimeout(() => setTestNotice(''), 12000);
+    // The main process records the OS-level outcome of the test toast; read it
+    // back after the toast fires (~5s) plus its 8s display-confirmation window.
+    if (window.haruzimDesktop?.getNotificationDiagnostics) {
+      const pressedAt = Date.now();
+      const checkOutcome = async () => {
+        try {
+          const diag = await window.haruzimDesktop.getNotificationDiagnostics();
+          if (!diag || diag.kind !== 'test' || new Date(diag.at).getTime() < pressedAt) return;
+          if (diag.event === 'shown') {
+            setTestResult('מערכת ההתראות אישרה שההתראה הוצגה. אם לא ראיתם באנר, בדקו את הגדרות ההתראות של Windows.');
+          } else if (diag.event === 'show-timeout') {
+            setTestResult('Windows לא אישר הצגת התראה. ייתכן שההתראות חסומות בהגדרות המערכת — כתבו לנו ונבדוק.');
+          } else {
+            setTestResult('אירעה שגיאה בהצגת ההתראה — כתבו לנו ונבדוק.');
+          }
+        } catch { /* diagnostics must never break the panel */ }
+      };
+      window.setTimeout(checkOutcome, 13500);
+      window.setTimeout(checkOutcome, 16500);
+    }
   };
 
   const signOut = () => {
@@ -886,7 +908,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="panel-box" id="connection"><div className="panel-header"><h3>חיבור מערכת</h3></div><p>ההזמנות מתעדכנות בזמן אמת. אם החיבור נותק, בדקו שהשרת זמין.</p><button className="refresh-btn" type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> רענון נתונים</button><button className="refresh-btn" type="button" onClick={sendTestNotification}><BellRing size={15} /> שליחת התראת בדיקה</button>{testNotice && <p className="manager-notice" role="status">{testNotice}</p>}</div>
+              <div className="panel-box" id="connection"><div className="panel-header"><h3>חיבור מערכת</h3></div><p>ההזמנות מתעדכנות בזמן אמת. אם החיבור נותק, בדקו שהשרת זמין.</p><button className="refresh-btn" type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> רענון נתונים</button><button className="refresh-btn" type="button" onClick={sendTestNotification}><BellRing size={15} /> שליחת התראת בדיקה</button>{testNotice && <p className="manager-notice" role="status">{testNotice}</p>}{testResult && <p className="manager-notice" role="status">{testResult}</p>}</div>
             </section>
 
             {isOwner && (

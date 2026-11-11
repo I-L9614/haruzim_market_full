@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, Notification, Tray, ipcMain, net, protocol } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -17,6 +18,22 @@ const isDev = !app.isPackaged;
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+
+// One instance only: reopening via the shortcut focuses the existing window
+// (which keeps its session) instead of starting a parallel instance. A second
+// instance cannot lock the same profile and gets empty storage, which used to
+// drop the user back on the login screen after every X-close + reopen.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
 
 function createTray() {
   tray = new Tray(path.join(__dirname, 'tray-icon.png'));
@@ -75,16 +92,53 @@ function showWindowAndNavigate(payload) {
   mainWindow.webContents.send('navigate-to-order', payload || {});
 }
 
-function showOrderToast({ title, body, orderId }) {
-  const notification = new Notification({
-    title,
-    body,
-    silent: false,
-    icon: path.join(__dirname, 'tray-icon.png')
-  });
-  notification.on('click', () => showWindowAndNavigate(orderId ? { orderId } : {}));
-  notification.show();
+// Display diagnostics: records the last toast's OS-level outcome to a small
+// file so the renderer (and support) can tell whether Windows confirmed the
+// banner ('shown'), stayed silent ('show-timeout') or threw ('error').
+// Diagnostics never break the notification flow.
+function recordNotificationEvent(kind, event, extra) {
+  try {
+    const payload = {
+      kind: kind || 'order',
+      event,
+      at: new Date().toISOString(),
+      supported: Notification.isSupported(),
+      ...(extra || {})
+    };
+    fs.writeFileSync(path.join(app.getPath('userData'), 'notification-diagnostics.json'), JSON.stringify(payload, null, 2));
+  } catch { /* diagnostics must never break the app */ }
 }
+
+function showOrderToast({ title, body, orderId, kind }) {
+  try {
+    const notification = new Notification({
+      title,
+      body,
+      silent: false,
+      icon: path.join(__dirname, 'tray-icon.png')
+    });
+    let shown = false;
+    notification.on('click', () => showWindowAndNavigate(orderId ? { orderId } : {}));
+    notification.on('show', () => {
+      shown = true;
+      recordNotificationEvent(kind, 'shown');
+    });
+    notification.show();
+    setTimeout(() => {
+      if (!shown) recordNotificationEvent(kind, 'show-timeout');
+    }, 8000);
+  } catch (error) {
+    recordNotificationEvent(kind, 'error', { message: String((error && error.message) || error) });
+  }
+}
+
+ipcMain.handle('notification-diagnostics', () => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'notification-diagnostics.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+});
 
 // Renderer reports a new order; show an OS notification only while the window
 // is hidden (when visible, the in-page banner + alert tone already cover it,
@@ -112,12 +166,15 @@ ipcMain.on('test-notification', () => {
     globalThis.testNotificationsShown = (globalThis.testNotificationsShown || 0) + 1;
     showOrderToast({
       title: 'התראת בדיקה',
-      body: 'כך תיראה התראה על הזמנה חדשה. לחיצה פותחת את מסך ההזמנות.'
+      body: 'כך תיראה התראה על הזמנה חדשה. לחיצה פותחת את מסך ההזמנות.',
+      kind: 'test'
     });
   }, 5000);
 });
 
-app.whenReady().then(() => {
+// Startup runs only in the instance that owns the single-instance lock; a
+// second launch quits above before creating windows, tray or protocol hooks.
+if (gotSingleInstanceLock) app.whenReady().then(() => {
   if (app.isPackaged) {
     const distDirectory = path.resolve(__dirname, '..', 'dist');
     protocol.handle('haruzim', (request) => {

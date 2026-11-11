@@ -1,7 +1,7 @@
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
 !define APP_NAME "Haruzim Admin"
-!define APP_VERSION "1.0.7"
+!define APP_VERSION "1.0.8"
 !define APP_PUBLISHER "Haruzim Market"
 !define APP_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\HaruzimAdmin.exe"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\HaruzimAdmin"
@@ -132,6 +132,10 @@ Section "Install"
       StrCpy $RegistrationError "CreateShortcut"
       Goto registration_failed
     ClearErrors
+    ; Windows toast attribution: tag the shortcut with our AppUserModelID so
+    ; notifications register under the app (best-effort, never fatal).
+    ApplicationID::Set "$SMPROGRAMS\חרוזים\חרוזים - ניהול.lnk" "com.haruzim.admin" "true"
+    ClearErrors
     CreateShortcut "$SMPROGRAMS\חרוזים\הסר התקנה.lnk" "$INSTDIR\Uninstall.exe"
     IfErrors 0 +3
       StrCpy $RegistrationError "CreateShortcut"
@@ -141,6 +145,8 @@ Section "Install"
     IfErrors 0 +3
       StrCpy $RegistrationError "CreateShortcut"
       Goto registration_failed
+    ClearErrors
+    ApplicationID::Set "$DESKTOP\חרוזים - ניהול.lnk" "com.haruzim.admin" "true"
     ClearErrors
     WriteRegStr HKCU "${APP_DIR_REGKEY}" "" "$INSTDIR\Haruzim Admin.exe"
     IfErrors 0 +3

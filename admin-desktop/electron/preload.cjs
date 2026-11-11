@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('haruzimDesktop', {
   sendTestNotification: () => {
     try { ipcRenderer.send('test-notification'); } catch { /* bridge must never break the page */ }
   },
+  getNotificationDiagnostics: () => {
+    try { return ipcRenderer.invoke('notification-diagnostics'); } catch { return Promise.resolve(null); }
+  },
   onNavigateToOrder: (callback) => {
     if (typeof callback !== 'function') return () => {};
     const listener = (_event, payload) => {
