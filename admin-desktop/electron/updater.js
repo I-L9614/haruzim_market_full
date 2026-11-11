@@ -211,6 +211,10 @@ export const createUpdateController = ({
     const args = process.env.HARUZIM_UPDATE_SILENT === '1' ? ['/S', '/AUTORUN'] : ['/AUTORUN'];
     try {
       const child = spawnImpl(downloadedInstaller, args, { detached: true, stdio: 'ignore' });
+      // The installer runs after this app quits; its exit/error is the only
+      // signal we ever get about a failed silent upgrade (see the app log).
+      child.on?.('error', (error) => log(`update installer failed to start: ${error?.message || error}`));
+      child.on?.('exit', (code) => log(`update installer exited with code ${code}`));
       child.unref();
     } catch (error) {
       log(`update install failed: ${error?.message || error}`);

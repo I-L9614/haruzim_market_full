@@ -123,4 +123,5 @@ jobs:
           path: |
             admin-desktop/release/inst-stage/Haruzim-Admin-Setup-1.0.9.exe
             smoke-shots/*.png
+            smoke-shots/*.log
           retention-days: 14

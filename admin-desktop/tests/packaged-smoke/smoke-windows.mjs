@@ -111,7 +111,7 @@ if (!fs.existsSync(MARKER)) fail('userData marker lost in the 1.0.8 -> 1.0.9 upg
 ok('upgrade 1.0.8 -> 1.0.9: same install dir, registry updated, userData preserved');
 
 // ---------- Phase B: full updater cycle 1.0.9 -> 9.9.9 ----------
-const appLog = path.join(os.tmpdir(), 'hz-smoke-app.log');
+const appLog = path.join(SHOTS, 'hz-app-first-instance.log');
 const appLogFd = fs.openSync(appLog, 'w');
 const child = spawn(APP_EXE, [`--remote-debugging-port=${CDP_PORT}`], {
   env: { ...process.env, HARUZIM_UPDATE_FEED_URL: FEED_URL, HARUZIM_UPDATE_SILENT: '1' },
@@ -222,7 +222,25 @@ ok('install approved; waiting for the silent upgrade and relaunch');
 
 await waitFor(() => displayVersion() === '9.9.9', 'registry DisplayVersion 9.9.9 (silent upgrade)', 90);
 if (!fs.existsSync(MARKER)) fail('userData marker lost in the 1.0.9 -> 9.9.9 in-app update');
-await waitFor(appRunning, 'updated app relaunched via /AUTORUN', 30);
+ok('silent upgrade applied: registry DisplayVersion 9.9.9, userData preserved');
+
+let relaunched = false;
+for (let i = 0; i < 30 && !relaunched; i++) { if (appRunning()) relaunched = true; else await sleep(2000); }
+if (!relaunched) {
+  // Diagnostics: desktop state + first-instance log + a manual launch attempt
+  // (distinguishes "autorun never fired" from "the 9.9.9 build cannot start").
+  try { captureScreen('win-07-relaunch-timeout.png'); } catch {}
+  console.log('first-instance log tail:\n' + (fs.existsSync(appLog) ? fs.readFileSync(appLog, 'utf8').slice(-4000) : '(no app log)'));
+  const relog = path.join(SHOTS, 'hz-relaunch-manual.log');
+  const relogFd = fs.openSync(relog, 'w');
+  const manual = spawn(APP_EXE, [], { stdio: ['ignore', relogFd, relogFd], detached: true });
+  manual.unref();
+  await sleep(12000);
+  const manualOk = appRunning();
+  console.log('manual launch log tail:\n' + (fs.existsSync(relog) ? fs.readFileSync(relog, 'utf8').slice(-4000) : '(empty)'));
+  if (manualOk) console.log('note: manual launch works - the 9.9.9 build starts, so /AUTORUN itself did not fire');
+  fail(`updated app did not relaunch via /AUTORUN (manual launch ${manualOk ? 'WORKS' : 'ALSO FAILS'})`);
+}
 ok('in-app update completed: 1.0.9 -> 9.9.9, data preserved, app relaunched');
 await sleep(4000);
 captureScreen('win-07-after-update.png');
