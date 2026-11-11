@@ -2,6 +2,10 @@ import { app, BrowserWindow, Menu, Notification, Tray, ipcMain, net, protocol } 
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  createUpdateController, createGitHubFeed,
+  UPDATE_CHECK_INTERVAL_MS, UPDATE_STARTUP_DELAY_MS
+} from './updater.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -132,6 +136,42 @@ function showOrderToast({ title, body, orderId, kind }) {
   }
 }
 
+// In-app updates: a manual updater over the hand-written NSIS installer (see
+// electron/updater.js). The renderer shows a small update button; checking
+// never downloads, and downloading/installing each require a user approval.
+let updateController = null;
+function sendUpdateState(state) {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-status', state);
+  } catch { /* update reporting must never break the app */ }
+}
+
+function setupUpdates() {
+  // HARUZIM_UPDATE_FEED_URL points the updater at a staging/test feed; unset
+  // in production, where the public GitHub releases feed is used.
+  const feed = createGitHubFeed({
+    includePrerelease: process.env.HARUZIM_UPDATE_INCLUDE_PRERELEASE === '1',
+    releasesUrl: process.env.HARUZIM_UPDATE_FEED_URL || ''
+  });
+  updateController = createUpdateController({
+    feed,
+    currentVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+    tempDir: app.getPath('temp'),
+    send: sendUpdateState,
+    log: (message) => console.warn('[updates]', message),
+    quitApp: () => { isQuitting = true; app.quit(); }
+  });
+  ipcMain.handle('update-get-state', () => updateController.getState());
+  ipcMain.handle('update-check', () => updateController.check());
+  ipcMain.handle('update-download', () => updateController.download());
+  ipcMain.handle('update-install', () => updateController.install());
+  if (app.isPackaged) {
+    setTimeout(() => { updateController.check(); }, UPDATE_STARTUP_DELAY_MS).unref();
+    setInterval(() => { updateController.check(); }, UPDATE_CHECK_INTERVAL_MS).unref();
+  }
+}
+
 ipcMain.handle('notification-diagnostics', () => {
   try {
     return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'notification-diagnostics.json'), 'utf8'));
@@ -191,6 +231,7 @@ if (gotSingleInstanceLock) app.whenReady().then(() => {
       return net.fetch(pathToFileURL(targetPath).toString());
     });
   }
+  setupUpdates();
   createTray();
   createWindow();
 

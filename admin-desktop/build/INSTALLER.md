@@ -1,4 +1,15 @@
-# Windows installer 1.0.3
+# Windows installer 1.0.9
+
+The ApplicationID plugin (shortcut toast attribution) is vendored at
+`build/nsis-plugins/ApplicationID.dll` (from the connectiblutz
+NSIS-ApplicationID 1.1 release, ReleaseUnicode build) and loaded with
+`!addplugindir /x86-unicode "nsis-plugins"` - stage that folder next to
+`installer.nsi` when compiling. `APP_VERSION` can be overridden with
+makensis `-DAPP_VERSION=x.y.z` for the CI update-target build.
+
+`/AUTORUN` (passed by the in-app updater after the user approves an install)
+launches the app once the upgrade completes; manual installs do not launch.
+`/S` (silent) is supported and used by the packaged Windows smoke only.
 
 The custom per-user NSIS installer is used instead of electron-builder's
 NSIS target. It keeps the original app path, registry keys and shortcuts.
@@ -37,7 +48,9 @@ FileFunc. Do not use a partial archive extraction as the app source.
   staging folder created by this run.
 - Registration is changed only after activation. A registration failure is
   reported explicitly, not as a completed install.
-- No automatic launch or Windows startup registration. No admin elevation.
+- No automatic launch on manual install (only the updater's /AUTORUN flag
+  starts the app after an approved update). No Windows startup registration.
+  No admin elevation.
 - The Electron user profile under AppData and cloud database are not changed.
 
 This is not a power-loss-atomic transaction. A machine crash between folder

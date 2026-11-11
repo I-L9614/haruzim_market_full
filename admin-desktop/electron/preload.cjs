@@ -15,6 +15,29 @@ contextBridge.exposeInMainWorld('haruzimDesktop', {
   getNotificationDiagnostics: () => {
     try { return ipcRenderer.invoke('notification-diagnostics'); } catch { return Promise.resolve(null); }
   },
+  // In-app updates: state pull + push, and the three user-approved actions.
+  getUpdateState: () => {
+    try { return ipcRenderer.invoke('update-get-state'); } catch { return Promise.resolve(null); }
+  },
+  checkForUpdates: () => {
+    try { return ipcRenderer.invoke('update-check'); } catch { return Promise.resolve(null); }
+  },
+  downloadUpdate: () => {
+    try { return ipcRenderer.invoke('update-download'); } catch { return Promise.resolve(null); }
+  },
+  installUpdate: () => {
+    try { return ipcRenderer.invoke('update-install'); } catch { return Promise.resolve(false); }
+  },
+  onUpdateStatus: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, state) => {
+      try { callback(state || {}); } catch { /* update errors must not break listeners */ }
+    };
+    ipcRenderer.on('update-status', listener);
+    return () => {
+      try { ipcRenderer.removeListener('update-status', listener); } catch { /* already torn down */ }
+    };
+  },
   onNavigateToOrder: (callback) => {
     if (typeof callback !== 'function') return () => {};
     const listener = (_event, payload) => {

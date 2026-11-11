@@ -6,6 +6,7 @@ import { BellRing, DollarSign, ShoppingBag, PackageCheck, TrendingUp, ShieldChec
 import './styles.css';
 import ErrorBoundary from './ErrorBoundary';
 import CreditAccounts, { CreditDecision } from './CreditAccounts';
+import UpdateButton from './UpdateButton';
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : '');
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || (API_BASE ? API_BASE.replace(/\/api\/?$/, '') : '');
@@ -741,10 +742,13 @@ function App() {
             <p className="eyebrow">שליטה בזמן אמת</p>
             <h1>לוח בקרה</h1>
           </div>
-          <div className={`status-pill ${isConnected ? 'online' : 'offline'}`}>
-            <BellRing size={14} /> {isConnected ? 'מחובר' : 'מנותק'}
+          <div className="topbar-actions">
+            <UpdateButton />
+            <div className={`status-pill ${isConnected ? 'online' : 'offline'}`}>
+              <BellRing size={14} /> {isConnected ? 'מחובר' : 'מנותק'}
+            </div>
+            <button className="logout-btn" type="button" onClick={signOut}>יציאה</button>
           </div>
-          <button className="logout-btn" type="button" onClick={signOut}>יציאה</button>
         </header>
 
         {creditOrder && <CreditDecision order={creditOrder} busy={!!savingOrder} onCancel={() => setCreditOrder(null)} onSave={creditDecision => updateOrder(creditOrder, { fulfillmentStatus: 'delivered', creditDecision })} />}

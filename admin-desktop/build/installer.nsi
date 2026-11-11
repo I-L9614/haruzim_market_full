@@ -1,7 +1,12 @@
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
 !define APP_NAME "Haruzim Admin"
-!define APP_VERSION "1.0.8"
+; CI overrides this with /DAPP_VERSION for the update-target build.
+!ifndef APP_VERSION
+!define APP_VERSION "1.0.9"
+!endif
+; The ApplicationID plugin (toast shortcut attribution) is vendored with the repo.
+!addplugindir /x86-unicode "nsis-plugins"
 !define APP_PUBLISHER "Haruzim Market"
 !define APP_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\HaruzimAdmin.exe"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\HaruzimAdmin"
@@ -26,6 +31,7 @@ Var CheckDir
 Var BusyFile
 Var HadOld
 Var RegistrationError
+Var AutoRun
 
 Function .onInit
   ; Match the original per-user installer, including a custom selected folder.
@@ -33,6 +39,14 @@ Function .onInit
   ${If} $0 != ""
     ${GetParent} "$0" $INSTDIR
   ${EndIf}
+  ; The in-app updater passes /AUTORUN so the new version starts by itself
+  ; once the upgrade finishes; manual installs keep asking nothing new.
+  StrCpy $AutoRun "0"
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} $R0 "/AUTORUN" $R1
+  IfErrors 0 +2
+    StrCpy $AutoRun "1"
 FunctionEnd
 
 ; Open every existing application file without modifying it. A running app,
@@ -79,7 +93,7 @@ Function CheckFiles
 FunctionEnd
 
 Section "Install"
-  StrCpy $StageDir "$INSTDIR.haruzim-stage-1.0.7"
+  StrCpy $StageDir "$INSTDIR.haruzim-stage-${APP_VERSION}"
   IfFileExists "$StageDir\*" stage_exists
   ClearErrors
   CreateDirectory "$StageDir"
@@ -227,6 +241,9 @@ Section "Install"
     SetErrorLevel 2
     Quit
   success:
+    ${If} $AutoRun == "1"
+      Exec '"$INSTDIR\Haruzim Admin.exe"'
+    ${EndIf}
 SectionEnd
 
 Section "Uninstall"

@@ -1,0 +1,114 @@
+name: Build Windows installer
+
+# Manual prep route only: run by hand from the Actions tab when a release is
+# approved. Builds the hand-written NSIS installer for admin-desktop, then runs
+# the packaged Windows smoke: old-install upgrade compatibility (published
+# 1.0.8 -> new build) and a full in-app update cycle against a TEMPORARY
+# prerelease (9.9.9) that this workflow creates and always deletes. It does
+# NOT publish the real release and uses only the default GITHUB_TOKEN.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write # create/delete the temporary 9.9.9 smoke prerelease only
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run updater unit tests
+        run: node --test admin-desktop/tests/updater.test.mjs
+
+      - name: Build the renderer (production API)
+        shell: pwsh
+        working-directory: admin-desktop
+        run: |
+          $env:VITE_API_URL = 'https://haruzim-api.haruzim-probe.workers.dev/api'
+          $env:VITE_SOCKET_URL = 'https://haruzim-api.haruzim-probe.workers.dev'
+          npx vite build
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Pack the app (dir) and build the NSIS installer
+        shell: pwsh
+        working-directory: admin-desktop
+        run: |
+          $env:CSC_IDENTITY_AUTO_DISCOVERY = 'false'
+          npx electron-builder --win dir
+          node build/patch_icon.cjs "release/win-unpacked/Haruzim Admin.exe" build/icon.ico
+          $stage = 'release/inst-stage'
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item build/installer.nsi, build/icon.ico $stage
+          Copy-Item -Recurse build/nsis-plugins $stage
+          Copy-Item -Recurse release/win-unpacked "$stage/app"
+          Set-Location $stage
+          & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis failed ($LASTEXITCODE)" }
+
+      - name: Build the 9.9.9 smoke-target installer
+        shell: pwsh
+        working-directory: admin-desktop
+        run: |
+          $env:CSC_IDENTITY_AUTO_DISCOVERY = 'false'
+          npx electron-builder --win dir -c.extraMetadata.version=9.9.9
+          node build/patch_icon.cjs "release/win-unpacked/Haruzim Admin.exe" build/icon.ico
+          $stage = 'release/inst-stage-9.9.9'
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item build/installer.nsi, build/icon.ico $stage
+          Copy-Item -Recurse build/nsis-plugins $stage
+          Copy-Item -Recurse release/win-unpacked "$stage/app"
+          Set-Location $stage
+          & "C:\Program Files (x86)\NSIS\makensis.exe" -DAPP_VERSION=9.9.9 installer.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis 9.9.9 failed ($LASTEXITCODE)" }
+
+      - name: Publish the temporary 9.9.9 smoke prerelease
+        shell: pwsh
+        working-directory: admin-desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $exe = "release/inst-stage-9.9.9/Haruzim-Admin-Setup-9.9.9.exe"
+          if (-not (Test-Path $exe)) { throw "9.9.9 installer missing" }
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          Set-Content -NoNewline "$exe.sha256" "$hash  Haruzim-Admin-Setup-9.9.9.exe"
+          gh release create admin-desktop-v9.9.9 --prerelease --title "update smoke target (temporary)" --notes "Temporary target for the packaged updater smoke test; deleted by the same workflow." $exe "$exe.sha256"
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
+
+      - name: Run the packaged Windows smoke (upgrade compat + full update cycle)
+        shell: pwsh
+        env:
+          HARUZIM_SETUP_EXE: admin-desktop\release\inst-stage\Haruzim-Admin-Setup-1.0.9.exe
+          HARUZIM_UPDATE_FEED_URL: https://api.github.com/repos/I-L9614/haruzim_market_full/releases/tags/admin-desktop-v9.9.9
+          SMOKE_SHOTS_DIR: smoke-shots
+        run: node admin-desktop/tests/packaged-smoke/smoke-windows.mjs
+
+      - name: Delete the temporary smoke prerelease
+        if: always()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete admin-desktop-v9.9.9 --yes --cleanup-tag
+
+      - name: Upload installer and smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: haruzim-windows-installer
+          path: |
+            admin-desktop/release/inst-stage/Haruzim-Admin-Setup-1.0.9.exe
+            smoke-shots/*.png
+          retention-days: 14
