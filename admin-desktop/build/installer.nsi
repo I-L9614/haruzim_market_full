@@ -45,7 +45,9 @@ Function .onInit
   ${GetParameters} $R0
   ClearErrors
   ${GetOptions} $R0 "/AUTORUN" $R1
-  IfErrors 0 +2
+  ; GetOptions sets the error flag when the flag is ABSENT: on error skip the
+  ; mark (+2), otherwise fall through (0) and set it.
+  IfErrors +2 0
     StrCpy $AutoRun "1"
 FunctionEnd
 
