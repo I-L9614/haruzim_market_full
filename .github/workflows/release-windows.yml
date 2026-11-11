@@ -76,7 +76,7 @@ jobs:
           Copy-Item -Recurse build/nsis-plugins $stage
           Copy-Item -Recurse release/win-unpacked "$stage/app"
           Set-Location $stage
-          & "C:\Program Files (x86)\NSIS\makensis.exe" -DAPP_VERSION=9.9.9 installer.nsi
+          & "C:\Program Files (x86)\NSIS\makensis.exe" "-DAPP_VERSION=9.9.9" installer.nsi
           if ($LASTEXITCODE -ne 0) { throw "makensis 9.9.9 failed ($LASTEXITCODE)" }
 
       - name: Publish the temporary 9.9.9 smoke prerelease
