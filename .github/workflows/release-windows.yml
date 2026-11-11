@@ -30,7 +30,7 @@ jobs:
         run: npm install
 
       - name: Run updater unit tests
-        run: node --test admin-desktop/tests/updater.test.mjs
+        run: node --test admin-desktop/tests/updater.test.mjs admin-desktop/tests/updateGuard.test.mjs
 
       - name: Build the renderer (production API)
         shell: pwsh
@@ -97,6 +97,8 @@ jobs:
         env:
           HARUZIM_SETUP_EXE: admin-desktop\release\inst-stage\Haruzim-Admin-Setup-1.0.9.exe
           HARUZIM_UPDATE_FEED_URL: https://api.github.com/repos/I-L9614/haruzim_market_full/releases/tags/admin-desktop-v9.9.9
+          # The smoke targets a prerelease; production installs never set this.
+          HARUZIM_UPDATE_INCLUDE_PRERELEASE: '1'
           SMOKE_SHOTS_DIR: smoke-shots
         run: node admin-desktop/tests/packaged-smoke/smoke-windows.mjs
 
