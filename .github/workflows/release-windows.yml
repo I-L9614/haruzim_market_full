@@ -87,9 +87,11 @@ jobs:
         run: |
           $exe = "release/inst-stage-9.9.9/Haruzim-Admin-Setup-9.9.9.exe"
           if (-not (Test-Path $exe)) { throw "9.9.9 installer missing" }
-          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
-          Set-Content -NoNewline "$exe.sha256" "$hash  Haruzim-Admin-Setup-9.9.9.exe"
-          gh release create admin-desktop-v9.9.9 --prerelease --title "update smoke target (temporary)" --notes "Temporary target for the packaged updater smoke test; deleted by the same workflow." $exe "$exe.sha256"
+          # SHA-256 sidecar via node (deterministic on any shell).
+          node -e "const c=require('crypto'),fs=require('fs'),p=require('path');const f=process.argv[1];fs.writeFileSync(f+'.sha256',c.createHash('sha256').update(fs.readFileSync(f)).digest('hex')+'  '+p.basename(f))" $exe
+          $exeItem = Get-Item $exe
+          $shaItem = Get-Item "$exe.sha256" # throws here if the sidecar was not created
+          gh release create admin-desktop-v9.9.9 --prerelease --title "update smoke target (temporary)" --notes "Temporary target for the packaged updater smoke test; deleted by the same workflow." $exeItem.FullName $shaItem.FullName
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
 
       - name: Run the packaged Windows smoke (upgrade compat + full update cycle)
@@ -107,7 +109,11 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release delete admin-desktop-v9.9.9 --yes --cleanup-tag
+        run: |
+          # Tolerate runs that failed before the prerelease was created.
+          gh release view admin-desktop-v9.9.9 *> $null
+          if ($LASTEXITCODE -eq 0) { gh release delete admin-desktop-v9.9.9 --yes --cleanup-tag }
+          exit 0
 
       - name: Upload installer and smoke evidence
         if: always()
