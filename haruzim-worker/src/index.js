@@ -601,14 +601,12 @@ async function notifyTelegramOrder(env, order) {
   const botToken = env.TELEGRAM_BOT_TOKEN;
   const chatId = env.TELEGRAM_CHAT_ID;
   if (!botToken || !chatId) return;
+  // Minimal payload by design (approved): order id + manager link only, so no
+  // customer name/phone/address and no order details leave our systems.
   const text = [
     'התקבלה הזמנה חדשה בחנות',
-    `מספר: ${order._id}`,
-    `לקוח: ${order.customer?.name || '—'}`,
-    `טלפון: ${order.customer?.phone || '—'}`,
-    `כתובת: ${[order.customer?.address?.street, order.customer?.address?.apartment, order.customer?.address?.city].filter(Boolean).join(', ') || '—'}`,
-    `סכום: ${Number(order.total || 0).toFixed(2)} ₪`,
-    'סטטוס: ממתינה לתשלום ותיאום משלוח'
+    `מספר הזמנה: ${String(order._id).slice(-8)}`,
+    'לפרטים וטיפול: https://haruzim-store.pages.dev/manager/'
   ].join('\n');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
