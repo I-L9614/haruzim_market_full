@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('haruzimDesktop', {
   notifyNewOrder: (payload) => {
     try { ipcRenderer.send('order-notification', payload); } catch { /* bridge must never break the page */ }
   },
+  sendTestNotification: () => {
+    try { ipcRenderer.send('test-notification'); } catch { /* bridge must never break the page */ }
+  },
   onNavigateToOrder: (callback) => {
     if (typeof callback !== 'function') return () => {};
     const listener = (_event, payload) => {

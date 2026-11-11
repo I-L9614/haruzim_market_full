@@ -1,7 +1,7 @@
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
 !define APP_NAME "Haruzim Admin"
-!define APP_VERSION "1.0.6"
+!define APP_VERSION "1.0.7"
 !define APP_PUBLISHER "Haruzim Market"
 !define APP_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\HaruzimAdmin.exe"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\HaruzimAdmin"
@@ -79,7 +79,7 @@ Function CheckFiles
 FunctionEnd
 
 Section "Install"
-  StrCpy $StageDir "$INSTDIR.haruzim-stage-1.0.6"
+  StrCpy $StageDir "$INSTDIR.haruzim-stage-1.0.7"
   IfFileExists "$StageDir\*" stage_exists
   ClearErrors
   CreateDirectory "$StageDir"

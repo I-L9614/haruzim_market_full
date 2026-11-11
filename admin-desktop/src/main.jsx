@@ -56,6 +56,7 @@ function App() {
   const [featuredNotice, setFeaturedNotice] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [testNotice, setTestNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(() => localStorage.getItem('haruzim-admin-token') || '');
   const [login, setLogin] = useState({ email: '', password: '' });
@@ -620,6 +621,18 @@ function App() {
     }
   };
 
+  // Local test toast: asks the main process to fire one in ~5s, leaving time
+  // to close the window with X. No order is created and nothing is written.
+  const sendTestNotification = () => {
+    if (!window.haruzimDesktop?.sendTestNotification) {
+      setTestNotice('התראות בדיקה זמינות רק באפליקציית שולחן העבודה.');
+      return;
+    }
+    window.haruzimDesktop.sendTestNotification();
+    setTestNotice('התראת בדיקה תופיע בעוד כ־5 שניות. אפשר לסגור את החלון ב־X כדי לבדוק שהיא קופצת גם כשהאפליקציה ברקע.');
+    window.setTimeout(() => setTestNotice(''), 12000);
+  };
+
   const signOut = () => {
     localStorage.removeItem('haruzim-admin-token');
     localStorage.removeItem('haruzim-admin-profile');
@@ -873,7 +886,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="panel-box" id="connection"><div className="panel-header"><h3>חיבור מערכת</h3></div><p>ההזמנות מתעדכנות בזמן אמת. אם החיבור נותק, בדקו שהשרת זמין.</p><button className="refresh-btn" type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> רענון נתונים</button></div>
+              <div className="panel-box" id="connection"><div className="panel-header"><h3>חיבור מערכת</h3></div><p>ההזמנות מתעדכנות בזמן אמת. אם החיבור נותק, בדקו שהשרת זמין.</p><button className="refresh-btn" type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> רענון נתונים</button><button className="refresh-btn" type="button" onClick={sendTestNotification}><BellRing size={15} /> שליחת התראת בדיקה</button>{testNotice && <p className="manager-notice" role="status">{testNotice}</p>}</div>
             </section>
 
             {isOwner && (

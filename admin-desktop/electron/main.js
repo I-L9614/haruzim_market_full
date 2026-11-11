@@ -102,6 +102,21 @@ ipcMain.on('order-notification', (_event, payload) => {
 });
 
 
+// Local test toast, on user request only: no order data and no server writes.
+// Fires ~5s after the renderer asks so the user can close the window with X
+// and verify the OS banner appears while the app sits in the tray. Unlike
+// order toasts it also shows while the window is visible - testing the OS
+// notification surface is its whole point. Clicking reopens the orders view.
+ipcMain.on('test-notification', () => {
+  setTimeout(() => {
+    globalThis.testNotificationsShown = (globalThis.testNotificationsShown || 0) + 1;
+    showOrderToast({
+      title: 'התראת בדיקה',
+      body: 'כך תיראה התראה על הזמנה חדשה. לחיצה פותחת את מסך ההזמנות.'
+    });
+  }, 5000);
+});
+
 app.whenReady().then(() => {
   if (app.isPackaged) {
     const distDirectory = path.resolve(__dirname, '..', 'dist');
