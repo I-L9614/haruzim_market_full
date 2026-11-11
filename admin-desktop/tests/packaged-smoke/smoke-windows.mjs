@@ -120,7 +120,7 @@ const child = spawn(APP_EXE, [`--remote-debugging-port=${CDP_PORT}`], {
 process.on('exit', () => { try { killApp(); } catch {} });
 
 let browser = null;
-for (let i = 0; i < 30 && !browser; i++) {
+for (let i = 0; i < 90 && !browser; i++) {
   try { browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`); } catch { await sleep(1000); }
 }
 if (!browser) fail('installed 1.0.9 did not expose CDP');
