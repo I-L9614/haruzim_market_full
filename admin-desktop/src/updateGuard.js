@@ -72,12 +72,15 @@ if (typeof window !== 'undefined') {
 
   // Forms whose unsaved edits are real data at risk. The login card and the
   // update dialogs themselves never count.
-  const RISK_FORM = 'form:not(.login-card)';
+  const RISK_FORM = 'form:not(.login-card), .featured-select-form, .credit-dialog, .credit-detail';
   const inUpdateDialog = (node) => Boolean(node.closest?.('.update-modal-backdrop'));
 
   const dirtyNodes = new Set();
+  const revisions = new WeakMap();
   const markDirty = (form) => {
-    if (!form || dirtyNodes.has(form)) return;
+    if (!form) return;
+    revisions.set(form, (revisions.get(form) || 0) + 1);
+    if (dirtyNodes.has(form)) return;
     dirtyNodes.add(form);
     updateGuard.formBecameDirty();
   };
@@ -86,18 +89,24 @@ if (typeof window !== 'undefined') {
     updateGuard.formClosed(true);
   };
 
-  // User edits only: capture-phase input/change (React controlled inputs fire
-  // both through the same native events). Submitting hands the data to the
-  // app - the in-flight save is then covered by the pending-writes count.
+  // A submit is NOT a save: validation, permission, network or server errors
+  // must keep the dirty mark. Only an explicit success callback or unmount
+  // releases it. Revision checks preserve edits made while a save is pending.
+  window.__beginUpdateSave = (selector) => {
+    const node = typeof selector === 'string' ? document.querySelector(selector) : selector;
+    const revision = revisions.get(node) || 0;
+    return () => { if (node && (revisions.get(node) || 0) === revision) release(node); };
+  };
   document.addEventListener('input', onEdit, true);
   document.addEventListener('change', onEdit, true);
   function onEdit(event) {
     const form = event.target?.closest?.(RISK_FORM);
     if (form && !inUpdateDialog(form)) markDirty(form);
   }
-  document.addEventListener('submit', (event) => {
-    const form = event.target?.closest?.(RISK_FORM);
-    if (form) release(form);
+  // Image removal uses buttons rather than input/change events.
+  document.addEventListener('click', (event) => {
+    const button = event.target?.closest?.('.product-image-upload-field button');
+    if (button) markDirty(button.closest(RISK_FORM));
   }, true);
 
   // A form that unmounts (modal closed, view switched) no longer holds data
@@ -124,3 +133,8 @@ if (typeof window !== 'undefined') {
 
   report(updateGuard.state());
 }
+
+// Call before a save and invoke the returned callback ONLY after confirmed
+// success. No-op outside the renderer; never sends field values to main.
+export const beginUpdateSave = (selector) => typeof window !== 'undefined'
+  ? (window.__beginUpdateSave?.(selector) || (() => {})) : (() => {});

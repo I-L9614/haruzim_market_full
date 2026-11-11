@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch, apiErrorMessage, parseJson } from './apiError';
+import { beginUpdateSave } from './updateGuard';
 const money = c => `${(Number(c || 0) / 100).toFixed(2)}₪`;
 export function CreditDecision({ order, onCancel, onSave, busy }) {
   const [mode, setMode] = useState('total'), [amount, setAmount] = useState(''), [reason, setReason] = useState('');
@@ -23,19 +24,19 @@ export default function CreditAccounts({ apiBase, token, disabled, revision }) {
   useEffect(() => { load(); }, [load, revision]);
   const select = async a => { setError(''); try { const data = await request(`/${a._id}/history`); setSelected(data.account); setAmount((data.account.balanceCents / 100).toFixed(2)); setReason(''); setNewCode(''); setHistory(data.entries || []); setNextBefore(data.nextBefore); } catch(e) {setError(e.message);} };
   const run = async action => { setBusy(true); setError(''); setNotice(''); try { await action(); await load(); } catch(e) { setError(e.message); } finally {setBusy(false);} };
-  const adjust = mode => run(async () => {
+  const adjust = mode => { const markSaved = beginUpdateSave('.credit-detail'); return run(async () => {
     if (!reason.trim()) throw new Error('יש לציין סיבת שינוי.');
     const target = mode === 'reset' ? 0 : Number(amount);
     if (!Number.isFinite(target) || (mode !== 'reset' && !/^-?\d+(\.\d{1,2})?$/.test(amount))) throw new Error('יש להזין סכום תקין.');
     if (!window.confirm(`לשנות את היתרה של ${selected.name} מ-${money(selected.balanceCents)} ל-${target.toFixed(2)}₪? שינוי זה אינו מחייב כרטיס ואינו שולח תשלום.`)) return;
     const data = await request(`/${selected._id}/balance`, 'PATCH', { mode, amount, reason, expectedVersion: selected.version, requestId: crypto.randomUUID() });
-    await select(data.account); setNotice('היתרה עודכנה ונשמרה בהיסטוריה.');
-  });
+    await select(data.account); markSaved(); setNotice('היתרה עודכנה ונשמרה בהיסטוריה.');
+  }); };
   return <section className="panel credit-panel" id="credit-accounts">
     <div className="panel-header"><h2>לקוחות בהקפה</h2><button type="button" disabled={busy} onClick={load}>רענון יתרות</button></div>
     <p>הקפה נפרדת מחשבון ההתחברות לאתר. המנהל מוסר ללקוח את השם והקוד. הקוד נשמר בצורה מאובטחת ולא מוצג שוב.</p>
     {error && <p className="error-banner" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
-    <form className="credit-create" onSubmit={e => {e.preventDefault(); run(async () => {await request('', 'POST', form); setForm({ name: '', password: '' }); setNotice('לקוח ההקפה נוצר עם יתרה אפס. מסרו לו את השם והקוד בערוץ פרטי.');});}}>
+    <form className="credit-create" onSubmit={e => {e.preventDefault(); const markSaved = beginUpdateSave(e.currentTarget); run(async () => {await request('', 'POST', form); markSaved(); setForm({ name: '', password: '' }); setNotice('לקוח ההקפה נוצר עם יתרה אפס. מסרו לו את השם והקוד בערוץ פרטי.');});}}>
       <label>שם לקוח להקפה<input required minLength={2} maxLength={80} value={form.name} onChange={e => setForm({...form, name:e.target.value})} autoComplete="off" /></label>
       <label>קוד ללקוח (לפחות 8 תווים)<input required type="password" minLength={8} maxLength={72} value={form.password} onChange={e => setForm({...form, password:e.target.value})} autoComplete="new-password" /></label>
       <button disabled={disabled || busy} type="submit">יצירת לקוח הקפה</button>
@@ -46,7 +47,7 @@ export default function CreditAccounts({ apiBase, token, disabled, revision }) {
       <label>יתרה חדשה (₪), לא סכום להוספה<input type="number" step="0.01" min="-1000000" max="1000000" value={amount} onChange={e => setAmount(e.target.value)} /></label>
       <label>סיבת השינוי / פרטי תשלום<input maxLength={300} value={reason} onChange={e => setReason(e.target.value)} placeholder="למשל: התקבל תשלום במזומן" /></label>
       <div className="credit-actions"><button type="button" disabled={disabled || busy || reason.trim().length < 2} onClick={() => adjust('set')}>שמירת יתרה חדשה</button><button type="button" disabled={disabled || busy || reason.trim().length < 2} onClick={() => adjust('reset')}>איפוס לאחר תשלום</button><button type="button" disabled={disabled || busy} onClick={() => run(async () => { if (!window.confirm(`${selected.active ? 'לחסום הזמנות הקפה חדשות' : 'להפעיל הקפה'} עבור ${selected.name}? היתרה וההיסטוריה לא יימחקו.`)) return; const d = await request(`/${selected._id}/access`, 'PATCH', { active: !selected.active, expectedVersion: selected.version }); await select(d.account); })}>{selected.active ? 'חסימת הקפה' : 'הפעלת הקפה'}</button></div>
-      <form className="credit-create" onSubmit={e => {e.preventDefault(); run(async () => {if (!window.confirm('להחליף את הקוד? הקוד הישן לא יעבוד עוד.')) return; const d = await request(`/${selected._id}/access`, 'PATCH', {password: newCode, expectedVersion: selected.version}); await select(d.account); setNewCode(''); setNotice('הקוד הוחלף. מסרו את הקוד החדש ללקוח באופן פרטי.');});}}><label>קוד חדש<input type="password" required minLength={8} maxLength={72} autoComplete="new-password" value={newCode} onChange={e => setNewCode(e.target.value)} /></label><button disabled={disabled || busy} type="submit">החלפת קוד</button></form>
+      <form className="credit-create" onSubmit={e => {e.preventDefault(); const markSaved = beginUpdateSave(e.currentTarget); run(async () => {if (!window.confirm('להחליף את הקוד? הקוד הישן לא יעבוד עוד.')) return; const d = await request(`/${selected._id}/access`, 'PATCH', {password: newCode, expectedVersion: selected.version}); await select(d.account); markSaved(); setNewCode(''); setNotice('הקוד הוחלף. מסרו את הקוד החדש ללקוח באופן פרטי.');});}}><label>קוד חדש<input type="password" required minLength={8} maxLength={72} autoComplete="new-password" value={newCode} onChange={e => setNewCode(e.target.value)} /></label><button disabled={disabled || busy} type="submit">החלפת קוד</button></form>
       <h3>היסטוריית יתרה</h3><div className="credit-history">{history.map(e => <article key={e._id}><strong>{new Date(e.createdAt).toLocaleString('he-IL')}</strong><span>שינוי: {money(e.deltaCents)} · יתרה: {money(e.afterCents)}</span><span>{e.reason || ({delivery:'מסירת הזמנה',reset:'איפוס לאחר תשלום',set:'שינוי יתרה'}[e.kind])}</span>{e.order && <small>הזמנה: {String(e.order).slice(-8)}</small>}</article>)}</div>
       {nextBefore && <button type="button" onClick={() => run(async () => { const d = await request(`/${selected._id}/history?before=${encodeURIComponent(nextBefore)}`); setHistory(v => [...v, ...d.entries]); setNextBefore(d.nextBefore); })}>היסטוריה מוקדמת יותר</button>}
     </div>}

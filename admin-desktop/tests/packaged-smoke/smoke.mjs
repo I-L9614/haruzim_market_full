@@ -162,9 +162,34 @@ await page.waitForFunction(() => !document.querySelector('.update-modal'), null,
 // install call over unsaved forms is refused without the discard choice.
 const enforced = await page.evaluate(() => window.haruzimDesktop.installUpdate());
 assert(enforced?.installed === false && enforced?.reason === 'unsaved-forms', `main process refuses install over unsaved forms (${JSON.stringify(enforced)})`);
-// The discard path and the real install-and-relaunch cycle with the actual
-// NSIS installer are proven by the Windows packaged smoke (a Linux spawn of
-// the fake installer quits the app mid-call and drops CDP).
+// A failed submit must NOT clear the unsaved-work mark.
+await page.click('.category-create-form button[type="submit"]');
+await page.waitForFunction(() => document.querySelector('.inventory-panel .error-banner')?.textContent, null, { timeout: 10000 });
+const afterFailure = await page.evaluate(() => window.__updateGuard.state());
+if (!(afterFailure.dirtyForms === 1 && afterFailure.pendingWrites === 0)) throw new Error('failed save lost its dirty mark: ' + JSON.stringify(afterFailure));
+console.log('smoke ok: failed category save retains dirty mark and typed values');
+
+// Featured selection is a div, not a form. It still counts as unsaved work.
+await page.evaluate(() => {
+  const select = document.querySelector('.featured-select-form select');
+  select.add(new Option('smoke product', 'smoke-product'));
+});
+await page.selectOption('.featured-select-form select', 'smoke-product');
+const featuredDirty = await page.evaluate(() => window.__updateGuard.state());
+if (featuredDirty.dirtyForms !== 2) throw new Error('featured selection was not tracked');
+await page.route('**/api/admin/catalog/featured-product', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ productId: 'smoke-product' }) }));
+await page.click('.featured-select-form button');
+await page.waitForFunction(() => window.__updateGuard.state().dirtyForms === 1 && window.__updateGuard.state().pendingWrites === 0, null, { timeout: 10000 });
+console.log('smoke ok: featured selection tracked, cleared only on confirmed save success');
+
+// Successful category save explicitly releases its dirty mark.
+await page.route('**/api/admin/catalog/categories', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ category: { _id: 'smoke-category', name: 'קטגוריית בדיקה' } }) }));
+await page.click('.category-create-form button[type="submit"]');
+await page.waitForFunction(() => {
+  const g = window.__updateGuard?.state();
+  return g && g.dirtyForms === 0 && g.pendingWrites === 0;
+}, null, { timeout: 10000 });
+console.log('smoke ok: successful save clears dirty mark after server confirmation');
 
 console.log(`SMOKE_PASSED screenshots=${SHOTS}`);
 try { await browser.close(); } catch {}

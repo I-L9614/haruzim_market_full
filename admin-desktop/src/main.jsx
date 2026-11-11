@@ -7,7 +7,7 @@ import './styles.css';
 import ErrorBoundary from './ErrorBoundary';
 import CreditAccounts, { CreditDecision } from './CreditAccounts';
 import UpdateButton from './UpdateButton';
-import './updateGuard';
+import { beginUpdateSave } from './updateGuard';
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : '');
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || (API_BASE ? API_BASE.replace(/\/api\/?$/, '') : '');
@@ -280,6 +280,7 @@ function App() {
   };
 
   const createManager = async (event) => {
+    const markSaved = beginUpdateSave('.manager-form');
     event.preventDefault();
     if (isShabbatClosed) { setManagerError('החנות סגורה בשבת. ניהול חשבונות יתאפשר לאחר צאת השבת.'); return; }
     setManagerError('');
@@ -295,6 +296,7 @@ function App() {
       if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן ליצור את החשבון.'));
       setManagers((previous) => [data.manager, ...previous]);
       setManagerForm({ name: '', email: '', password: '' });
+      markSaved();
       setManagerNotice(`החשבון של ${data.manager.name} נוצר. יש למסור לו את פרטי הכניסה באופן מאובטח.`);
     } catch (createError) {
       setManagerError(createError.message || 'שגיאה ביצירת החשבון.');
@@ -552,6 +554,7 @@ function App() {
   };
 
   const createCategory = async (event) => {
+    const markSaved = beginUpdateSave('.category-create-form');
     event.preventDefault();
     if (isShabbatClosed) { setProductError('החנות סגורה בשבת. עדכון קטגוריות יתאפשר לאחר צאת השבת.'); return; }
     setCategoryNotice('');
@@ -566,6 +569,7 @@ function App() {
       if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן ליצור את הקטגוריה.'));
       setCategories((previous) => [...previous, data.category].sort((a, b) => a.name.localeCompare(b.name, 'he')));
       setCategoryName('');
+      markSaved();
       setCategoryNotice(`הקטגוריה ״${data.category.name}״ נוספה וניתן לשייך אליה מוצרים.`);
     } catch (error) {
       setProductError(error.message || 'שגיאה ביצירת הקטגוריה.');
@@ -573,6 +577,7 @@ function App() {
   };
 
   const saveFeaturedProduct = async () => {
+    const markSaved = beginUpdateSave('.featured-select-form');
     if (isShabbatClosed) { setProductError('החנות סגורה בשבת. עדכון האתר יתאפשר לאחר צאת השבת.'); return; }
     setFeaturedNotice('');
     setProductError('');
@@ -586,6 +591,7 @@ function App() {
       const data = await parseJson(response);
       if (!response.ok) throw new Error(apiErrorMessage(response, data, 'לא ניתן לשמור את המוצר המובלט.'));
       setFeaturedProductId(data.productId || '');
+      markSaved();
       setFeaturedNotice('המוצר שיוצג בראש אתר הלקוחות עודכן.');
     } catch (error) {
       setProductError(error.message || 'שגיאה בשמירת המוצר המובלט.');
