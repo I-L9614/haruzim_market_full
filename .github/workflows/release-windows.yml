@@ -64,7 +64,11 @@ jobs:
         working-directory: admin-desktop
         run: |
           $env:CSC_IDENTITY_AUTO_DISCOVERY = 'false'
-          npx electron-builder --win dir -c.extraMetadata.version=9.9.9
+          # Version via package.json (the -c.extraMetadata CLI override is
+          # mangled by PowerShell argument parsing).
+          node -e "const fs=require('fs');const f='package.json';const p=JSON.parse(fs.readFileSync(f,'utf8'));p.version='9.9.9';fs.writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+          npx electron-builder --win dir
+          git checkout -- package.json
           node build/patch_icon.cjs "release/win-unpacked/Haruzim Admin.exe" build/icon.ico
           $stage = 'release/inst-stage-9.9.9'
           New-Item -ItemType Directory -Force $stage | Out-Null
