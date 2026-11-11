@@ -13,6 +13,10 @@ const API_CONFIGURATION_ERROR = !API_BASE
   ? 'כתובת שרת ה-API חסרה. יש להגדיר VITE_API_URL בבניית אפליקציית הניהול.'
   : !SOCKET_URL ? 'כתובת עדכוני Socket חסרה. יש להגדיר VITE_SOCKET_URL.' : '';
 
+function getFulfillmentStatus(order) {
+  return order.fulfillment?.status || (['shipped', 'delivered', 'cancelled'].includes(order.status) ? order.status : 'pending');
+}
+
 function playAlertTone() {
   try {
     const audioUrl = new URL('bubble-pop-ui-alert-jam-fx-1-00-01.mp3', window.location.href);
@@ -22,10 +26,6 @@ function playAlertTone() {
   } catch {
     // Audio is best-effort; notification display and order processing continue normally.
   }
-}
-
-function getFulfillmentStatus(order) {
-  return order.fulfillment?.status || (['shipped', 'delivered', 'cancelled'].includes(order.status) ? order.status : 'pending');
 }
 
 function getTokenRole(token) {
@@ -99,8 +99,9 @@ function App() {
       // In-page tone only while the window is visible; when hidden to tray the
       // main process shows the OS notification with its sound instead (no double sound).
       if (document.visibilityState === 'visible') playAlertTone();
+      // Full order id is passed so a toast click can route back to this order.
       if (window.haruzimDesktop) {
-        window.haruzimDesktop.notifyNewOrder({ orderId: String(orderId).slice(-8), total });
+        window.haruzimDesktop.notifyNewOrder({ orderId: String(orderId), total });
       }
       setNotification({ orderId, total });
       setOrders((prev) => [incomingOrder, ...prev.filter((order) => order._id !== incomingOrder._id)]);
@@ -227,6 +228,30 @@ function App() {
     () => Object.values(stats.orderStatusBreakdown).reduce((sum, value) => sum + Number(value || 0), 0),
     [stats.orderStatusBreakdown]
   );
+
+  // Clicking a tray notification: open the orders view and flash the order's
+  // row. If the order is no longer listed (stale toast), the orders list
+  // itself is the fallback destination.
+  useEffect(() => {
+    if (!window.haruzimDesktop?.onNavigateToOrder) return undefined;
+    return window.haruzimDesktop.onNavigateToOrder((payload) => {
+      const targetId = payload?.orderId ? String(payload.orderId) : '';
+      setOrderFilter('all');
+      setActiveSection('orders');
+      window.setTimeout(() => {
+        if (targetId) {
+          const row = document.querySelector(`[data-order-id="${targetId}"]`);
+          if (row) {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            row.classList.add('order-row-flash');
+            window.setTimeout(() => row.classList.remove('order-row-flash'), 3500);
+            return;
+          }
+        }
+        document.getElementById('orders')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    });
+  }, []);
 
   const loginAdmin = async (event) => {
     event.preventDefault();
@@ -782,7 +807,7 @@ function App() {
               </div>
               <div className="orders-table">
                 {visibleOrders.map((order) => (
-                  <div key={order._id} className="order-row">
+                  <div key={order._id} className="order-row" data-order-id={String(order._id)}>
                     <div className="order-customer">
                       <strong>{order.customer?.name || 'לקוח'}</strong>
                       <small>מס׳ {String(order._id).slice(-8)} · {new Date(order.createdAt).toLocaleString('he-IL')}</small>

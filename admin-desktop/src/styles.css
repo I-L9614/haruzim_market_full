@@ -461,3 +461,10 @@ button { cursor: pointer; }
 .credit-dialog { color: #332942; }
 .credit-dialog h2, .credit-dialog label { color: #503480; }
 .credit-dialog input[type=number] { direction: ltr; text-align: right; }
+
+/* Flash highlight when a tray notification click routes to a specific order */
+@keyframes orderRowFlash {
+  0%, 55% { background: rgba(240, 180, 41, 0.35); box-shadow: 0 0 0 2px #f0b429; }
+  100% { background: rgba(148, 163, 184, 0.05); box-shadow: none; }
+}
+.order-row-flash { animation: orderRowFlash 3.5s ease-out; }

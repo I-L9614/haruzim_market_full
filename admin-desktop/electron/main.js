@@ -9,6 +9,10 @@ protocol.registerSchemesAsPrivileged([{
   privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true }
 }]);
 
+// Windows toast notifications are only delivered reliably when the app's
+// AppUserModelID matches the installer shortcut (electron-builder appId).
+app.setAppUserModelId('com.haruzim.admin');
+
 const isDev = !app.isPackaged;
 let mainWindow = null;
 let tray = null;
@@ -61,24 +65,42 @@ function createWindow() {
   }
 }
 
+// Clicking a toast brings the window back and asks the renderer to open the
+// orders view; when the toast carries an order id the renderer flashes that
+// order's row, otherwise it falls back to the orders list.
+function showWindowAndNavigate(payload) {
+  if (!mainWindow) return;
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send('navigate-to-order', payload || {});
+}
+
+function showOrderToast({ title, body, orderId }) {
+  const notification = new Notification({
+    title,
+    body,
+    silent: false,
+    icon: path.join(__dirname, 'tray-icon.png')
+  });
+  notification.on('click', () => showWindowAndNavigate(orderId ? { orderId } : {}));
+  notification.show();
+}
+
 // Renderer reports a new order; show an OS notification only while the window
 // is hidden (when visible, the in-page banner + alert tone already cover it,
 // so no duplicate sound).
 ipcMain.on('order-notification', (_event, payload) => {
   if (mainWindow && mainWindow.isVisible()) return;
-  const orderId = payload && payload.orderId ? String(payload.orderId).slice(-8) : '';
+  const orderId = payload && payload.orderId ? String(payload.orderId) : '';
+  const shortId = orderId.slice(-8);
   const total = payload && payload.total != null ? ' · ' + Number(payload.total).toFixed(2) + '₪' : '';
-  const notification = new Notification({
+  showOrderToast({
     title: 'הזמנה חדשה התקבלה',
-    body: (orderId ? 'הזמנה מספר ' + orderId : 'התקבלה הזמנה חדשה') + total,
-    silent: false,
-    icon: path.join(__dirname, 'tray-icon.png')
+    body: (shortId ? 'הזמנה מספר ' + shortId : 'התקבלה הזמנה חדשה') + total,
+    orderId
   });
-  notification.on('click', () => {
-    if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
-  });
-  notification.show();
 });
+
 
 app.whenReady().then(() => {
   if (app.isPackaged) {
