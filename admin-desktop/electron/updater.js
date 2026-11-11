@@ -71,6 +71,9 @@ export const createGitHubFeed = ({
     const releases = Array.isArray(payload) ? payload : [payload];
     let best = null;
     for (const release of releases) {
+      // Prereleases are never offered to production installs, even if one
+      // somehow carries the highest tag (smoke targets are prereleases).
+      if (release?.prerelease && !includePrerelease) continue;
       const version = parseTagVersion(release?.tag_name, tagPrefix);
       if (!version) continue;
       const assets = Array.isArray(release?.assets) ? release.assets : [];
@@ -126,7 +129,10 @@ export const createUpdateController = ({
   send = () => {},
   log = () => {},
   quitApp = () => {},
-  spawnImpl = spawn
+  spawnImpl = spawn,
+  // In-flight writes (product saves, image uploads) block installation: a
+  // half-written record is never discarded by closing the app mid-save.
+  canInstall = () => ({ allow: true })
 } = {}) => {
   let state = { status: isPackaged && feed ? 'idle' : 'disabled', version: null, percent: null, error: null };
   let pendingRelease = null;
@@ -185,7 +191,9 @@ export const createUpdateController = ({
   // /AUTORUN, starts the new app) and quits this instance. Only from the
   // downloaded state - nothing installs without an approved download.
   const install = () => {
-    if (state.status !== 'downloaded' || !downloadedInstaller) return false;
+    if (state.status !== 'downloaded' || !downloadedInstaller) return { installed: false, reason: 'not-downloaded' };
+    const guard = canInstall() || { allow: true };
+    if (!guard.allow) return { installed: false, reason: guard.reason || 'blocked' };
     // /AUTORUN starts the new app once the upgrade finishes. HARUZIM_UPDATE_SILENT
     // is an unattended-install flag used by the packaged smoke test only.
     const args = process.env.HARUZIM_UPDATE_SILENT === '1' ? ['/S', '/AUTORUN'] : ['/AUTORUN'];
@@ -195,10 +203,10 @@ export const createUpdateController = ({
     } catch (error) {
       log(`update install failed: ${error?.message || error}`);
       setState({ status: 'error', percent: null, error: 'update-install-failed' });
-      return false;
+      return { installed: false, reason: 'spawn-failed' };
     }
     quitApp();
-    return true;
+    return { installed: true };
   };
 
   return { getState, check, download, install };

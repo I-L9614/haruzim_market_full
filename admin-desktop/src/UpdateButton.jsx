@@ -70,8 +70,16 @@ export default function UpdateButton() {
 
   const approveInstall = async () => {
     setDialog(null);
-    try { await bridge.installUpdate(); }
-    catch { setNotice('התקנת העדכון נכשלה. נסו שוב.'); }
+    try {
+      const result = await bridge.installUpdate();
+      // The main process enforces the write guard: a refusal means a save
+      // started after this dialog opened.
+      if (result && result.installed === false) {
+        setNotice(result.reason === 'pending-writes'
+          ? 'יש שמירה שעדיין מתבצעת — ההתקנה תתאפשר כשתסתיים'
+          : 'התקנת העדכון נכשלה. נסו שוב.');
+      }
+    } catch { setNotice('התקנת העדכון נכשלה. נסו שוב.'); }
   };
 
   return (

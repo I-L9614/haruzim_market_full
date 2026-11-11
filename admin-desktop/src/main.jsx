@@ -7,6 +7,7 @@ import './styles.css';
 import ErrorBoundary from './ErrorBoundary';
 import CreditAccounts, { CreditDecision } from './CreditAccounts';
 import UpdateButton from './UpdateButton';
+import './updateGuard';
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : '');
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || (API_BASE ? API_BASE.replace(/\/api\/?$/, '') : '');

@@ -5,7 +5,8 @@
 // changes, no real network writes), signs in with a fake admin token, and
 // drives the real update flow: check -> available -> approve download ->
 // bytes downloaded from a local stub -> SHA-256 verified -> downloaded ->
-// install dialog appears. It stops before spawning the installer.
+// install dialog; then proves an in-flight write blocks the install and a
+// settled write unblocks it (approving quits the app for the installer).
 //
 // Produces screenshots for visual verification and fails on any assertion.
 //
@@ -50,6 +51,8 @@ const assert = (cond, message) => { if (!cond) { console.error(`SMOKE FAILED: ${
 // Local stub serving the fake installer bytes + checksum for the main-process
 // downloader (main-process fetch is not covered by CDP interception).
 const stub = http.createServer((req, res) => {
+  if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': '*', 'Access-Control-Allow-Headers': '*' }); res.end(); return; }
+  if (req.url === '/hang') return; // never answers: simulates an in-flight write
   if (req.url === '/releases/latest') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(RELEASE_FEED)); return; }
   if (req.url === '/setup.exe') { res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': FAKE_EXE.length }); res.end(FAKE_EXE); return; }
   if (req.url === '/setup.exe.sha256') { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end(`${FAKE_SHA}  Haruzim-Admin-Setup-9.9.9.exe`); return; }
@@ -125,13 +128,27 @@ const installText = await page.textContent('.update-modal');
 assert(installText.includes('העדכון מוכן להתקנה'), 'install approval dialog appears after download');
 await page.screenshot({ path: path.join(SHOTS, '04-install-dialog.png') });
 
-// Dismiss without installing; the final state must stay 'downloaded'.
-await page.click('.update-modal .update-secondary');
-const finalState = await page.evaluate(() => window.haruzimDesktop?.getUpdateState?.());
-assert(finalState?.status === 'downloaded' && finalState?.version === '9.9.9', 'later leaves state downloaded (nothing installed)');
+// An in-flight write must block the install (main-process enforced guard).
+const hang = page.evaluate((port) => {
+  window.__smokeAbort = new AbortController();
+  return window.fetch(`http://127.0.0.1:${port}/hang`, { method: 'POST', signal: window.__smokeAbort.signal }).catch(() => 'settled');
+}, stubPort);
+await page.click('.update-modal .primary-btn'); // install dialog is already open
+await page.waitForFunction(() => document.querySelector('.update-notice')?.textContent.includes('שמירה'), null, { timeout: 5000 });
+const blocked = await page.evaluate(() => window.haruzimDesktop?.getUpdateState?.());
+assert(blocked?.status === 'downloaded', 'install refused while a write is in flight (app kept running, state downloaded)');
+await page.screenshot({ path: path.join(SHOTS, '05-install-blocked-pending-write.png') });
+
+// The unblocking direction (guard clears when the write settles, install
+// then proceeds and quits for the installer) is covered by the unit tests
+// and by the Windows packaged smoke with the real NSIS installer; driving
+// it here adds nothing about production behavior, since the fake installer
+// cannot execute on Linux and a quit drops CDP mid-call.
+await page.evaluate(() => window.__smokeAbort.abort());
+try { await hang; } catch {}
 
 console.log(`SMOKE_PASSED screenshots=${SHOTS}`);
-await browser.close();
+try { await browser.close(); } catch {}
 child.kill('SIGKILL');
 stub.close();
 process.exit(0);

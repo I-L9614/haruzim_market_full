@@ -146,6 +146,13 @@ function sendUpdateState(state) {
   } catch { /* update reporting must never break the app */ }
 }
 
+// The renderer reports in-flight writes so an approved install never closes
+// the app mid-save (main enforces it, so no caller can bypass the dialogs).
+let updateGuardState = { pendingWrites: 0 };
+ipcMain.on('update-guard-state', (_event, state) => {
+  updateGuardState = { pendingWrites: Number(state?.pendingWrites) || 0 };
+});
+
 function setupUpdates() {
   // HARUZIM_UPDATE_FEED_URL points the updater at a staging/test feed; unset
   // in production, where the public GitHub releases feed is used.
@@ -160,7 +167,8 @@ function setupUpdates() {
     tempDir: app.getPath('temp'),
     send: sendUpdateState,
     log: (message) => console.warn('[updates]', message),
-    quitApp: () => { isQuitting = true; app.quit(); }
+    quitApp: () => { isQuitting = true; app.quit(); },
+    canInstall: () => (updateGuardState.pendingWrites > 0 ? { allow: false, reason: 'pending-writes' } : { allow: true })
   });
   ipcMain.handle('update-get-state', () => updateController.getState());
   ipcMain.handle('update-check', () => updateController.check());

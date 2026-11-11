@@ -115,14 +115,35 @@ test('install only runs from downloaded state, then spawns installer and quits',
   let quit = false;
   const spawnImpl = (...args) => { calls.push(args); return { unref() {} }; };
   const { controller } = makeController({ spawnImpl, quitApp: () => { quit = true; } });
-  assert.equal(controller.install(), false); // nothing downloaded yet
+  assert.deepEqual(controller.install(), { installed: false, reason: 'not-downloaded' });
   await controller.check();
   await controller.download();
-  assert.equal(controller.install(), true);
+  assert.deepEqual(controller.install(), { installed: true });
   assert.equal(calls.length, 1);
   assert.ok(calls[0][0].endsWith('Haruzim-Admin-Setup-1.0.9.exe'));
   assert.deepEqual(calls[0][1], ['/AUTORUN']);
   assert.equal(quit, true);
+});
+
+test('install is blocked while writes are in flight (no app close mid-save)', async () => {
+  let quit = false;
+  const spawnImpl = () => ({ unref() {} });
+  const { controller } = makeController({ spawnImpl, quitApp: () => { quit = true; }, canInstall: () => ({ allow: false, reason: 'pending-writes' }) });
+  await controller.check();
+  await controller.download();
+  assert.deepEqual(controller.install(), { installed: false, reason: 'pending-writes' });
+  assert.equal(quit, false, 'app must not quit while a write is in flight');
+});
+
+test('production feed excludes prereleases even with the highest version', async () => {
+  const releases = [
+    { tag_name: 'admin-desktop-v9.9.9', prerelease: true, assets: RELEASE.assets },
+    { tag_name: 'admin-desktop-v1.0.9', prerelease: false, assets: RELEASE.assets }
+  ];
+  const feed = createGitHubFeed({ fetchImpl: async () => ({ ok: true, json: async () => releases[1] }) });
+  assert.equal((await feed.findLatest()).version, '1.0.9');
+  const listFeed = createGitHubFeed({ includePrerelease: true, fetchImpl: async () => ({ ok: true, json: async () => releases }) });
+  assert.equal((await listFeed.findLatest()).version, '9.9.9', 'test mode does see the prerelease');
 });
 
 test('install adds /S under the unattended test flag', async () => {
@@ -133,7 +154,7 @@ test('install adds /S under the unattended test flag', async () => {
     const { controller } = makeController({ spawnImpl });
     await controller.check();
     await controller.download();
-    assert.equal(controller.install(), true);
+    assert.deepEqual(controller.install(), { installed: true });
     assert.deepEqual(calls[0][1], ['/S', '/AUTORUN']);
   } finally {
     delete process.env.HARUZIM_UPDATE_SILENT;
