@@ -28,8 +28,7 @@ async function getFeaturedProduct(req, res, next) {
     if (!config?.featuredProduct) return res.json({ product: null });
     const product = await Product.findOne({
       _id: config.featuredProduct,
-      active: true,
-      $or: [{ stockQuantity: { $gt: 0 } }, { stockQuantity: null }, { stockQuantity: { $exists: false } }]
+      active: true
     })
       .populate('category', 'name slug')
       .lean();
@@ -56,8 +55,7 @@ async function setFeaturedProduct(req, res, next) {
     }
     if (productId && !await Product.exists({
       _id: productId,
-      active: true,
-      $or: [{ stockQuantity: { $gt: 0 } }, { stockQuantity: null }, { stockQuantity: { $exists: false } }]
+      active: true
     })) {
       return res.status(404).json({ error: 'PRODUCT_NOT_AVAILABLE', message: 'אפשר לבחור רק מוצר פעיל ובמלאי.' });
     }

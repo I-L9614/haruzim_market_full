@@ -53,7 +53,10 @@ const orderItemSchema = new mongoose.Schema({
   unitType: { type: String, enum: ['units', 'weight'], default: 'units' },
   quantity: { type: Number, required: true, min: 0.001 },
   unitPrice: { type: Number, required: true, min: 0 },
-  total: { type: Number, required: true, min: 0 }
+  total: { type: Number, required: true, min: 0 },
+  // Exact physical quantity reserved, independent of availability toggle.
+  // Absent only on historical orders created before flag-only ordering.
+  stockDeducted: { type: Number, min: 0 }
 }, { _id: false });
 
 const orderSchema = new mongoose.Schema({

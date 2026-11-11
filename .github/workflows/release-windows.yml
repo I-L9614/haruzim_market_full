@@ -3,7 +3,7 @@ name: Build Windows installer
 # Manual prep route only: run by hand from the Actions tab when a release is
 # approved. Builds the hand-written NSIS installer for admin-desktop, then runs
 # the packaged Windows smoke: old-install upgrade compatibility (published
-# 1.0.8 -> new build) and a full in-app update cycle against a TEMPORARY
+# 1.0.9 -> new build) and a full in-app update cycle against a TEMPORARY
 # prerelease (9.9.9) that this workflow creates and always deletes. It does
 # NOT publish the real release and uses only the default GITHUB_TOKEN.
 
@@ -97,7 +97,7 @@ jobs:
       - name: Run the packaged Windows smoke (upgrade compat + full update cycle)
         shell: pwsh
         env:
-          HARUZIM_SETUP_EXE: admin-desktop\release\inst-stage\Haruzim-Admin-Setup-1.0.9.exe
+          HARUZIM_SETUP_EXE: admin-desktop\release\inst-stage\Haruzim-Admin-Setup-1.0.10.exe
           HARUZIM_UPDATE_FEED_URL: https://api.github.com/repos/I-L9614/haruzim_market_full/releases/tags/admin-desktop-v9.9.9
           # The smoke targets a prerelease; production installs never set this.
           HARUZIM_UPDATE_INCLUDE_PRERELEASE: '1'
@@ -121,7 +121,7 @@ jobs:
         with:
           name: haruzim-windows-installer
           path: |
-            admin-desktop/release/inst-stage/Haruzim-Admin-Setup-1.0.9.exe
+            admin-desktop/release/inst-stage/Haruzim-Admin-Setup-1.0.10.exe
             smoke-shots/*.png
             smoke-shots/*.log
           retention-days: 14

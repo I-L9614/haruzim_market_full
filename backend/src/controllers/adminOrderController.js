@@ -57,7 +57,10 @@ async function updateOrderStatuses(req, res, next) {
             throw Object.assign(new Error('ORDER_ALREADY_DISPATCHED'), { status: 409 });
           }
           for (const item of order.items) {
-            await Product.updateOne({ _id: item.product, stockQuantity: { $ne: null } }, { $inc: { stockQuantity: item.quantity } }, { session });
+            // Old orders reserved the entire requested quantity; new orders
+            // record the actual deduction (including explicit zero).
+            const restore = item.stockDeducted === undefined ? item.quantity : item.stockDeducted;
+            if (restore > 0) await Product.updateOne({ _id: item.product, stockQuantity: { $ne: null } }, { $inc: { stockQuantity: restore } }, { session });
           }
           order.fulfillment = { status: 'cancelled', updatedAt: new Date() };
           order.status = 'cancelled';

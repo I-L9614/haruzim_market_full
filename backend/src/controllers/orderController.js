@@ -8,7 +8,6 @@ async function getProductAlternatives(product, limit = 3) {
   const candidates = await Product.find({
     category: product.category,
     active: true,
-    $or: [{ stockQuantity: { $gt: 0 } }, { stockQuantity: null }, { stockQuantity: { $exists: false } }],
     _id: { $ne: product._id }
   }).limit(limit).lean();
 
@@ -61,15 +60,6 @@ async function validateCartStock(items) {
       continue;
     }
 
-    if (product.stockQuantity != null && requestedQty > product.stockQuantity) {
-      unavailable.push({
-        productId: item.productId,
-        requested: requestedQty,
-        available: product.stockQuantity,
-        alternatives: await getProductAlternatives(product)
-      });
-      continue;
-    }
 
     validItems.push({
       productId: product._id,
@@ -141,10 +131,17 @@ async function checkoutOrder(req, res, next) {
         const product = byId.get(String(item.productId));
         const quantity = Number(item.quantity);
 
-        if (!product || quantity <= 0 || (product.unitType !== 'weight' && !Number.isInteger(quantity)) || (product.stockQuantity != null && quantity > product.stockQuantity)) {
+        if (!product || !Number.isFinite(quantity) || quantity <= 0 || (product.unitType !== 'weight' && !Number.isInteger(quantity))) {
           throw Object.assign(new Error('OUT_OF_STOCK'), { status: 409 });
         }
 
+        // Availability is controlled only by active. Keep positive-stock
+        // bookkeeping without blocking orders or allowing negative counts.
+        const stockDeducted = product.stockQuantity == null ? 0 : Math.min(Math.max(0, product.stockQuantity), quantity);
+        if (stockDeducted > 0) {
+          product.stockQuantity = Math.max(0, Math.round((product.stockQuantity - stockDeducted) * 1000000) / 1000000);
+          await product.save({ session });
+        }
         const unitPrice = product.promotion?.price ?? product.price;
         orderItems.push({
           product: product._id,
@@ -152,13 +149,10 @@ async function checkoutOrder(req, res, next) {
           unitType: product.unitType || 'units',
           quantity,
           unitPrice,
-          total: quantity * unitPrice
+          total: quantity * unitPrice,
+          stockDeducted
         });
 
-        if (product.stockQuantity != null) {
-          product.stockQuantity -= quantity;
-          await product.save({ session });
-        }
       }
 
       const subtotal = orderItems.reduce((sum, item) => sum + item.total, 0);

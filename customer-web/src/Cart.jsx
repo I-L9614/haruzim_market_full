@@ -34,7 +34,6 @@ export default function Cart({ cart, stockIssue, onChangeQuantity, onRemove, onC
                   className="cart-quantity-input"
                   type="number"
                   min={item.unitType === 'weight' ? '0.01' : '1'}
-                  max={item.stockQuantity ?? undefined}
                   step={item.unitType === 'weight' ? '0.01' : '1'}
                   value={quantityDrafts[item.productId] ?? String(item.quantity)}
                   aria-label={`${item.unitType === 'weight' ? 'משקל בקילוגרמים' : 'כמות ביחידות'} עבור ${item.name}`}

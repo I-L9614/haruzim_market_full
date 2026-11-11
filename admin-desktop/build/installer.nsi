@@ -3,7 +3,7 @@
 !define APP_NAME "Haruzim Admin"
 ; CI overrides this with /DAPP_VERSION for the update-target build.
 !ifndef APP_VERSION
-!define APP_VERSION "1.0.9"
+!define APP_VERSION "1.0.10"
 !endif
 ; The ApplicationID plugin (toast shortcut attribution) is vendored with the repo.
 !addplugindir /x86-unicode "nsis-plugins"

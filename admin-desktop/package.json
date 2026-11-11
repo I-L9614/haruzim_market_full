@@ -1,7 +1,7 @@
 {
   "name": "admin-desktop",
   "private": true,
-  "version": "1.0.9",
+  "version": "1.0.10",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {

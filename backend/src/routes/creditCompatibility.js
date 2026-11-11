@@ -115,7 +115,6 @@ async function getProductAlternatives(Product, product, limit = 3) {
   if (!product || !product.category) return [];
   const candidates = await Product.find({
     category: product.category, active: true,
-    $or: [{ stockQuantity: { $gt: 0 } }, { stockQuantity: null }, { stockQuantity: { $exists: false } }],
     _id: { $ne: product._id }
   }).limit(limit).lean();
   return candidates.map((candidate) => ({
@@ -146,10 +145,6 @@ async function validateCartStock(models, items) {
     }
     if (!Number.isFinite(requestedQty) || requestedQty <= 0 || (product.unitType !== 'weight' && !Number.isInteger(requestedQty))) {
       unavailable.push({ productId: item.productId, requested: requestedQty || 0, available: product.stockQuantity, alternatives: await getProductAlternatives(Product, product) });
-      continue;
-    }
-    if (product.stockQuantity != null && requestedQty > product.stockQuantity) {
-      unavailable.push({ productId: item.productId, requested: requestedQty, available: product.stockQuantity, alternatives: await getProductAlternatives(Product, product) });
       continue;
     }
     validItems.push({
@@ -227,15 +222,18 @@ app.post('/api/checkout', checkoutLimit, shabbatGuard, optionalCustomerAuth, asy
       for (const item of items) {
         const product = byId.get(String(item.productId));
         const quantity = Number(item.quantity);
-        if (!product || quantity <= 0 || (product.unitType !== 'weight' && !Number.isInteger(quantity)) || (product.stockQuantity != null && quantity > product.stockQuantity)) {
+        if (!product || !Number.isFinite(quantity) || quantity <= 0 || (product.unitType !== 'weight' && !Number.isInteger(quantity))) {
           throw Object.assign(new Error('OUT_OF_STOCK'), { status: 409 });
         }
-        const unitPrice = product.promotion?.price ?? product.price;
-        orderItems.push({ product: product._id, name: product.name, unitType: product.unitType || 'units', quantity, unitPrice, total: quantity * unitPrice });
-        if (product.stockQuantity != null) {
-          product.stockQuantity -= quantity;
+        // Availability is controlled only by active. Keep positive-stock
+        // bookkeeping without blocking orders or allowing negative counts.
+        const stockDeducted = product.stockQuantity == null ? 0 : Math.min(Math.max(0, product.stockQuantity), quantity);
+        if (stockDeducted > 0) {
+          product.stockQuantity = Math.max(0, Math.round((product.stockQuantity - stockDeducted) * 1000000) / 1000000);
           await product.save({ session });
         }
+        const unitPrice = product.promotion?.price ?? product.price;
+        orderItems.push({ product: product._id, name: product.name, unitType: product.unitType || 'units', quantity, unitPrice, total: quantity * unitPrice, stockDeducted });
       }
       const subtotal = orderItems.reduce((sum, item) => sum + item.total, 0);
       const userUpdate = { $set: { name: normalizedCustomer.name }, $addToSet: { addresses: normalizedCustomer.address } };
@@ -297,7 +295,10 @@ app.post('/api/checkout', checkoutLimit, shabbatGuard, optionalCustomerAuth, asy
             throw Object.assign(new Error('ORDER_ALREADY_DISPATCHED'), { status: 409 });
           }
           for (const item of order.items) {
-            await Product.updateOne({ _id: item.product, stockQuantity: { $ne: null } }, { $inc: { stockQuantity: item.quantity } }, { session });
+            // Old orders reserved the entire requested quantity; new orders
+            // record the actual deduction (including explicit zero).
+            const restore = item.stockDeducted === undefined ? item.quantity : item.stockDeducted;
+            if (restore > 0) await Product.updateOne({ _id: item.product, stockQuantity: { $ne: null } }, { $inc: { stockQuantity: restore } }, { session });
           }
           order.fulfillment = { status: 'cancelled', updatedAt: new Date() };
           order.status = 'cancelled';

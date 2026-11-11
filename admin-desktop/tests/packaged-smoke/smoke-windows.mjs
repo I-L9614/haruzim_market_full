@@ -1,10 +1,10 @@
 // Windows packaged smoke: proves the in-app updater end to end with REAL
 // installers on a real Windows machine (CI windows-latest), no secrets.
 //
-// Phase A - old-install compatibility: install the published 1.0.8 over its
-//   own userData marker, then upgrade silently to the freshly built 1.0.9 and
+// Phase A - old-install compatibility: install the published 1.0.9 over its
+//   own userData marker, then upgrade silently to the freshly built 1.0.10 and
 //   assert a single install, updated registry version, preserved marker.
-// Phase B - full updater cycle: launch the installed 1.0.9, sign in against a
+// Phase B - full updater cycle: launch the installed 1.0.10, sign in against a
 //   stubbed API (CDP interception only), click the update button, approve the
 //   download (real installer bytes downloaded from the temporary GitHub test
 //   prerelease, SHA-256 verified by the app), approve the install, and watch
@@ -12,7 +12,7 @@
 //   relaunch via /AUTORUN - with the userData marker still intact.
 //
 // Required env:
-//   HARUZIM_SETUP_EXE  - path to the freshly built 1.0.9 installer exe
+//   HARUZIM_SETUP_EXE  - path to the freshly built 1.0.10 installer exe
 //   HARUZIM_FEED_URL   - GitHub API URL of the temporary 9.9.9 test prerelease
 //   SMOKE_SHOTS_DIR    - folder for screenshots (optional)
 
@@ -40,7 +40,7 @@ const USER_DATA = path.join(process.env.APPDATA, 'Haruzim Admin');
 const MARKER = path.join(USER_DATA, 'smoke-marker.txt');
 const UNINST_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\HaruzimAdmin';
 const CDP_PORT = 9223;
-const OLD_SETUP_URL = 'https://github.com/I-L9614/haruzim_market_full/releases/download/admin-desktop-v1.0.8/Haruzim-Admin-Setup-1.0.8.exe';
+const OLD_SETUP_URL = 'https://github.com/I-L9614/haruzim_market_full/releases/download/admin-desktop-v1.0.9/Haruzim-Admin-Setup-1.0.9.exe';
 
 const displayVersion = () => {
   const r = spawnSync('reg', ['query', UNINST_KEY, '/v', 'DisplayVersion'], { encoding: 'utf8' });
@@ -91,26 +91,26 @@ killApp();
 await sleep(1500);
 
 // ---------- Phase A: old-install compatibility ----------
-const oldSetup = path.join(os.tmpdir(), 'Haruzim-Admin-Setup-1.0.8.exe');
+const oldSetup = path.join(os.tmpdir(), 'Haruzim-Admin-Setup-1.0.9.exe');
 if (!fs.existsSync(oldSetup)) {
   const res = await fetch(OLD_SETUP_URL);
-  if (!res.ok) fail(`cannot download published 1.0.8 installer: ${res.status}`);
+  if (!res.ok) fail(`cannot download published 1.0.9 installer: ${res.status}`);
   fs.writeFileSync(oldSetup, Buffer.from(await res.arrayBuffer()));
 }
-ok('downloaded the published 1.0.8 installer');
-silentInstall(oldSetup, '1.0.8');
-await waitFor(() => displayVersion() === '1.0.8', 'registry DisplayVersion 1.0.8', 15);
+ok('downloaded the published 1.0.9 installer');
+silentInstall(oldSetup, '1.0.9');
+await waitFor(() => displayVersion() === '1.0.9', 'registry DisplayVersion 1.0.9', 15);
 fs.mkdirSync(USER_DATA, { recursive: true });
 fs.writeFileSync(MARKER, `smoke marker ${Date.now()}`);
-ok('1.0.8 installed; userData marker written');
+ok('1.0.9 installed; userData marker written');
 
-silentInstall(SETUP_EXE, '1.0.9');
-await waitFor(() => displayVersion() === '1.0.9', 'registry DisplayVersion 1.0.9', 15);
-if (!fs.existsSync(APP_EXE)) fail('app exe missing after upgrade to 1.0.9');
-if (!fs.existsSync(MARKER)) fail('userData marker lost in the 1.0.8 -> 1.0.9 upgrade');
-ok('upgrade 1.0.8 -> 1.0.9: same install dir, registry updated, userData preserved');
+silentInstall(SETUP_EXE, '1.0.10');
+await waitFor(() => displayVersion() === '1.0.10', 'registry DisplayVersion 1.0.10', 15);
+if (!fs.existsSync(APP_EXE)) fail('app exe missing after upgrade to 1.0.10');
+if (!fs.existsSync(MARKER)) fail('userData marker lost in the 1.0.9 -> 1.0.10 upgrade');
+ok('upgrade 1.0.9 -> 1.0.10: same install dir, registry updated, userData preserved');
 
-// ---------- Phase B: full updater cycle 1.0.9 -> 9.9.9 ----------
+// ---------- Phase B: full updater cycle 1.0.10 -> 9.9.9 ----------
 const appLog = path.join(SHOTS, 'hz-app-first-instance.log');
 const appLogFd = fs.openSync(appLog, 'w');
 const child = spawn(APP_EXE, [`--remote-debugging-port=${CDP_PORT}`], {
@@ -123,7 +123,7 @@ let browser = null;
 for (let i = 0; i < 90 && !browser; i++) {
   try { browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`); } catch { await sleep(1000); }
 }
-if (!browser) fail('installed 1.0.9 did not expose CDP');
+if (!browser) fail('installed 1.0.10 did not expose CDP');
 const page = browser.contexts()[0].pages()[0];
 page.on('pageerror', (e) => console.log('renderer pageerror: ' + e.message));
 
@@ -136,8 +136,8 @@ await page.route('https://haruzim-api.haruzim-probe.workers.dev/**', (route) => 
 
 await page.waitForSelector('form', { timeout: 30000 });
 const initial = await page.evaluate(() => window.haruzimDesktop?.getUpdateState?.());
-if (!initial || initial.status === 'disabled') fail('update controller disabled in the installed 1.0.9');
-ok(`update controller live in the installed 1.0.9 (status: ${initial.status})`);
+if (!initial || initial.status === 'disabled') fail('update controller disabled in the installed 1.0.10');
+ok(`update controller live in the installed 1.0.10 (status: ${initial.status})`);
 
 await page.fill('input[type="email"]', 'smoke@admin.local');
 await page.fill('input[type="password"]', 'smoke-password');
@@ -240,7 +240,7 @@ await page.click('.update-modal .primary-btn'); // approve install: app quits, i
 ok('install approved; waiting for the silent upgrade and relaunch');
 
 await waitFor(() => displayVersion() === '9.9.9', 'registry DisplayVersion 9.9.9 (silent upgrade)', 90);
-if (!fs.existsSync(MARKER)) fail('userData marker lost in the 1.0.9 -> 9.9.9 in-app update');
+if (!fs.existsSync(MARKER)) fail('userData marker lost in the 1.0.10 -> 9.9.9 in-app update');
 ok('silent upgrade applied: registry DisplayVersion 9.9.9, userData preserved');
 
 let relaunched = false;
@@ -260,7 +260,7 @@ if (!relaunched) {
   if (manualOk) console.log('note: manual launch works - the 9.9.9 build starts, so /AUTORUN itself did not fire');
   fail(`updated app did not relaunch via /AUTORUN (manual launch ${manualOk ? 'WORKS' : 'ALSO FAILS'})`);
 }
-ok('in-app update completed: 1.0.9 -> 9.9.9, data preserved, app relaunched');
+ok('in-app update completed: 1.0.10 -> 9.9.9, data preserved, app relaunched');
 await sleep(4000);
 captureScreen('win-07-after-update.png');
 

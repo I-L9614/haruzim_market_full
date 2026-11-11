@@ -39,17 +39,12 @@ export default function Catalog({
       let next = Number.isFinite(current) ? current + direction * step : minimum;
       next = Math.round(next * 100) / 100;
       if (next < minimum) next = minimum;
-      if (product.stockQuantity != null) next = Math.min(next, product.stockQuantity);
       return { ...previous, [productId]: String(next) };
     });
   };
 
   const stockChipFor = (product, isWeightProduct) => {
-    if (product.stockQuantity == null) return { label: 'זמין להזמנה', low: false };
-    const stock = Number(product.stockQuantity);
-    if (stock <= 0) return { label: 'אזל מהמלאי', low: true };
-    if (stock <= 3) return { label: `נותרו ${product.stockQuantity} ${isWeightProduct ? 'ק״ג' : 'יח׳'}`, low: true };
-    return { label: `במלאי: ${product.stockQuantity} ${isWeightProduct ? 'ק״ג' : 'יח׳'}`, low: false };
+    return { label: product.active === false ? 'חסר במלאי' : 'זמין להזמנה', low: product.active === false };
   };
 
   return (
@@ -115,7 +110,7 @@ export default function Catalog({
                     <span className="qty-value">{quantity} <span className="qty-unit">{isWeightProduct ? 'ק״ג' : 'יח׳'}</span></span>
                     <button type="button" aria-label="הפחת" disabled={isShabbatBlocked} onClick={() => adjustQuantity(product, -1)}>−</button>
                   </div>
-                  <button className="add-btn" type="button" onClick={() => onAddToCart(product, Number(quantity))} disabled={isShabbatBlocked || product.stockQuantity === 0}>
+                  <button className="add-btn" type="button" onClick={() => onAddToCart(product, Number(quantity))} disabled={isShabbatBlocked || product.active === false}>
                     הוסף לסל
                   </button>
                 </div>

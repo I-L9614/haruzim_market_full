@@ -199,13 +199,13 @@ function App() {
     const quantity = Number(requestedQuantity);
     const isWeightProduct = product.unitType === 'weight';
     if (isShabbatBlocked || !Number.isFinite(quantity) || quantity <= 0 || (!isWeightProduct && !Number.isInteger(quantity))) return;
-    if (product.stockQuantity != null && (product.stockQuantity <= 0 || quantity > product.stockQuantity)) return;
+    if (product.active === false) return;
     setCart((prev) => {
       const existing = prev.find((item) => item.productId === String(product._id));
       if (existing) {
         const nextQuantity = existing.quantity + quantity;
         return prev.map((item) => item.productId === String(product._id)
-          ? { ...item, quantity: product.stockQuantity == null ? nextQuantity : Math.min(nextQuantity, product.stockQuantity) }
+          ? { ...item, quantity: nextQuantity }
           : item);
       }
 
@@ -228,7 +228,7 @@ function App() {
       if (!Number.isFinite(parsedQuantity)) return item;
       const minimum = item.unitType === 'weight' ? 0.01 : 1;
       const normalizedQuantity = item.unitType === 'weight' ? Math.max(minimum, parsedQuantity) : Math.max(minimum, Math.round(parsedQuantity));
-      return { ...item, quantity: item.stockQuantity == null ? normalizedQuantity : Math.min(Number(item.stockQuantity), normalizedQuantity) };
+      return { ...item, quantity: normalizedQuantity };
     }));
   };
 
@@ -359,7 +359,6 @@ function App() {
       let next = Number.isFinite(current) ? current + direction * step : minimum;
       next = Math.round(next * 100) / 100;
       if (next < minimum) next = minimum;
-      if (featuredProduct.stockQuantity != null) next = Math.min(next, featuredProduct.stockQuantity);
       return String(next);
     });
   };
@@ -447,7 +446,7 @@ function App() {
                 <span className="qty-value">{featuredQuantity} <span className="qty-unit">{featuredProduct.unitType === 'weight' ? 'ק״ג' : 'יח׳'}</span></span>
                 <button type="button" aria-label="הפחת" disabled={isShabbatBlocked} onClick={() => adjustFeaturedQuantity(-1)}>−</button>
               </div>
-              <button className="add-btn" type="button" disabled={isShabbatBlocked || featuredProduct.stockQuantity === 0} onClick={() => addToCart(featuredProduct, featuredQuantity)}>הוספה לעגלה</button>
+              <button className="add-btn" type="button" disabled={isShabbatBlocked || featuredProduct.active === false} onClick={() => addToCart(featuredProduct, featuredQuantity)}>הוספה לעגלה</button>
             </div>
           </div>
           {featuredProduct.imageUrl && <img src={featuredProduct.imageUrl} alt={featuredProduct.name} loading="eager" />}
@@ -560,10 +559,10 @@ function App() {
             <p>{selectedProduct.description}</p>
             <div className="modal-meta">
               <span>{selectedProduct.promotion?.price ?? selectedProduct.price}₪</span>
-              <span>{selectedProduct.stockQuantity == null ? 'זמין להזמנה' : `${selectedProduct.stockQuantity} ${selectedProduct.unitType === 'weight' ? 'ק״ג במלאי' : 'יחידות במלאי'}`}</span>
+              <span>{selectedProduct.active === false ? 'חסר במלאי' : 'זמין להזמנה'}</span>
             </div>
-            <label className="catalog-quantity-control"><span>{selectedProduct.unitType === 'weight' ? 'כמות בק״ג' : 'כמות ביחידות'}</span><input type="number" min={selectedProduct.unitType === 'weight' ? '0.01' : '1'} max={selectedProduct.stockQuantity ?? undefined} step={selectedProduct.unitType === 'weight' ? '0.01' : '1'} value={selectedProductQuantity} onChange={(event) => setSelectedProductQuantity(event.target.value)} /></label>
-            <button className="primary-btn full" type="button" disabled={isShabbatBlocked || selectedProduct.stockQuantity === 0} onClick={() => { addToCart(selectedProduct, selectedProductQuantity); setSelectedProduct(null); }}>
+            <label className="catalog-quantity-control"><span>{selectedProduct.unitType === 'weight' ? 'כמות בק״ג' : 'כמות ביחידות'}</span><input type="number" min={selectedProduct.unitType === 'weight' ? '0.01' : '1'} step={selectedProduct.unitType === 'weight' ? '0.01' : '1'} value={selectedProductQuantity} onChange={(event) => setSelectedProductQuantity(event.target.value)} /></label>
+            <button className="primary-btn full" type="button" disabled={isShabbatBlocked || selectedProduct.active === false} onClick={() => { addToCart(selectedProduct, selectedProductQuantity); setSelectedProduct(null); }}>
               הוסף לעגלה
             </button>
           </div>

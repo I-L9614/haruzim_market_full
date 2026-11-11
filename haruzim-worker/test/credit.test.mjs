@@ -102,3 +102,40 @@ test('legacy Express compatibility routes exercise same accounting and checkout 
     assert.equal((await lm.CreditAccount.findById(a._id)).balanceCents,975);
   }finally{await new Promise(resolve=>server.close(resolve));await legacyMongoose.disconnect();}
 });
+
+test('active alone gates orderability; zero stock orders and cancellation never invent stock', async () => {
+  const category=await models.Category.create({name:'זמינות בלבד',slug:'availability-only'});
+  const zero=await models.Product.create({name:'זמין באפס',category:category._id,price:3,stockQuantity:0,active:true});
+  const low=await models.Product.create({name:'זמין בכמות קטנה',category:category._id,price:4,stockQuantity:2,active:true});
+  const off=await models.Product.create({name:'חסר למרות כמות',category:category._id,price:5,stockQuantity:9,active:false});
+  const cart=[{productId:String(zero._id),quantity:3},{productId:String(low._id),quantity:5}];
+  assert.equal((await call('/api/checkout/validate','POST',{items:cart},'')).data.valid,true);
+  assert.equal((await call('/api/checkout/validate','POST',{items:[{productId:String(off._id),quantity:1}]},'')).data.valid,false);
+  const payload=checkoutBody();delete payload.paymentMethod;delete payload.creditCredentials;payload.items=cart;
+  const placed=await call('/api/checkout','POST',payload,'');assert.equal(placed.status,201);
+  const saved=await models.Order.findById(placed.data.order._id).lean();
+  assert.deepEqual(saved.items.map(i=>i.stockDeducted),[0,2]);
+  assert.equal((await models.Product.findById(zero._id)).stockQuantity,0);
+  assert.equal((await models.Product.findById(low._id)).stockQuantity,0);
+  assert.equal((await call(`/api/admin/orders/${saved._id}/status`,'PATCH',{paymentStatus:'pending',fulfillmentStatus:'cancelled'})).status,200);
+  assert.equal((await models.Product.findById(zero._id)).stockQuantity,0);
+  assert.equal((await models.Product.findById(low._id)).stockQuantity,2);
+  await call(`/api/admin/orders/${saved._id}/status`,'PATCH',{paymentStatus:'pending',fulfillmentStatus:'cancelled'});
+  assert.equal((await models.Product.findById(low._id)).stockQuantity,2,'repeated cancellation must not restore twice');
+  payload.items=[{productId:String(off._id),quantity:1}];
+  assert.equal((await call('/api/checkout','POST',payload,'')).status,400);
+  await models.StorefrontConfig.findByIdAndUpdate('storefront',{$set:{featuredProduct:zero._id}},{upsert:true});
+  assert.equal(String((await call('/api/featured-product','GET',undefined,'')).data.product._id),String(zero._id));
+  assert.equal((await call('/api/admin/catalog/featured-product','PUT',{productId:String(zero._id)})).status,200);
+});
+
+test('historical orders without stockDeducted restore their original reservation exactly once',async()=>{
+  const body=checkoutBody();delete body.paymentMethod;delete body.creditCredentials;
+  const placed=await call('/api/checkout','POST',body,'');assert.equal(placed.status,201);
+  await models.Order.updateOne({_id:placed.data.order._id},{$unset:{'items.0.stockDeducted':1}});
+  const before=await stock();
+  await call(`/api/admin/orders/${placed.data.order._id}/status`,'PATCH',{paymentStatus:'pending',fulfillmentStatus:'cancelled'});
+  assert.equal(await stock(),before+2);
+  await call(`/api/admin/orders/${placed.data.order._id}/status`,'PATCH',{paymentStatus:'pending',fulfillmentStatus:'cancelled'});
+  assert.equal(await stock(),before+2);
+});
