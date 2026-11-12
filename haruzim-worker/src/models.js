@@ -118,6 +118,12 @@ const creditEntrySchema = new mongoose.Schema({
   actorId: { type: String, required: true }
 }, { timestamps: { createdAt: true, updatedAt: false }, autoIndex: false });
 
+const loginThrottleSchema = new mongoose.Schema({
+  _id: { type: String }, // `${scope}:${normalizedEmail}`
+  failures: { type: Number, default: 0, min: 0 },
+  lockedUntil: { type: Date, default: null }
+}, { timestamps: { createdAt: false, updatedAt: true }, autoIndex: false });
+
 export function registerModelsOn(connection) {
   return {
     CreditAccount: connection.model('CreditAccount', creditAccountSchema),
@@ -128,6 +134,7 @@ export function registerModelsOn(connection) {
     ProductImage: connection.model('ProductImage', productImageSchema),
     Order: connection.model('Order', orderSchema),
     Admin: connection.model('Admin', adminSchema),
-    StorefrontConfig: connection.model('StorefrontConfig', storefrontConfigSchema)
+    StorefrontConfig: connection.model('StorefrontConfig', storefrontConfigSchema),
+    LoginThrottle: connection.model('LoginThrottle', loginThrottleSchema)
   };
 }

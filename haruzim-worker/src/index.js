@@ -5,6 +5,7 @@ import { signToken, verifyToken } from './jwt.js';
 import { getShabbatStatus } from './shabbat.js';
 import { createRateLimit } from './ratelimit.js';
 import { AuthDO, RealtimeDO, RateLimitDO, registerApp } from './durable.js';
+import { activeLock, recordFailure, clearFailures, lockedResponse } from './loginLock.js';
 
 export { AuthDO, RealtimeDO, RateLimitDO };
 
@@ -319,12 +320,18 @@ app.patch('/api/admin/credit-accounts/:id/access', requireAuth, adminOnly, shabb
 // ---------- admin auth ----------
 app.post('/api/auth/admin/login', loginLimit, async (c) => {
   const { email, password } = (await readBody(c)) || {};
-  const { Admin } = c.get('db').models;
-  const admin = await Admin.findOne({ email: String(email || '').trim().toLowerCase(), active: true });
+  const { Admin, LoginThrottle } = c.get('db').models;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const lockedUntil = await activeLock(LoginThrottle, 'admin', normalizedEmail);
+  if (lockedUntil) return lockedResponse(c, lockedUntil);
+  const admin = await Admin.findOne({ email: normalizedEmail, active: true });
   const ok = admin?.passwordHash ? await authStub(c.env).verifyPassword(String(password || ''), admin.passwordHash) : false;
   if (!admin || !ok) {
+    const failure = await recordFailure(LoginThrottle, 'admin', normalizedEmail);
+    if (failure.locked) return lockedResponse(c, failure.lockedUntil);
     return c.json({ error: 'INVALID_CREDENTIALS', message: 'אימייל או סיסמה שגויים.' }, 401);
   }
+  await clearFailures(LoginThrottle, 'admin', normalizedEmail);
   const token = await signToken({ id: String(admin._id), email: admin.email, role: admin.role }, '12h', c.env);
   return c.json({ token, admin: { id: String(admin._id), name: admin.name, email: admin.email, role: admin.role } });
 });
@@ -364,12 +371,17 @@ app.post('/api/auth/customer/login', loginLimit, async (c) => {
   const body = (await readBody(c)) || {};
   const email = String(body.email || '').trim().toLowerCase();
   const password = String(body.password || '');
-  const { User } = c.get('db').models;
+  const { User, LoginThrottle } = c.get('db').models;
+  const lockedUntil = await activeLock(LoginThrottle, 'customer', email);
+  if (lockedUntil) return lockedResponse(c, lockedUntil);
   const user = await User.findOne({ email, role: 'customer' }).select('+passwordHash');
   const ok = user?.passwordHash ? await authStub(c.env).verifyPassword(password, user.passwordHash) : false;
   if (!user?.passwordHash || !ok) {
+    const failure = await recordFailure(LoginThrottle, 'customer', email);
+    if (failure.locked) return lockedResponse(c, failure.lockedUntil);
     return c.json({ error: 'INVALID_CREDENTIALS', message: 'האימייל או הסיסמה אינם נכונים.' }, 401);
   }
+  await clearFailures(LoginThrottle, 'customer', email);
   const token = await signToken({ id: String(user._id), role: 'customer' }, '30d', c.env);
   return c.json(customerResponse(user, token));
 });
