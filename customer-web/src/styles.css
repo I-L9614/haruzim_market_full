@@ -148,11 +148,51 @@ button:active, .chip:active, .primary-btn:active, .secondary-btn:active, .ghost-
 
 .primary-btn:hover, .secondary-btn:hover, .ghost-btn:hover, .chip:hover, .whatsapp-btn:hover { transform: translateY(-1px); }
 
-.category-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 22px 0;
+.category-filter {
+  display: grid;
+  gap: 7px;
+  margin: 18px 0 22px;
+}
+
+.category-filter > label {
+  color: var(--muted-strong);
+  font-size: .9rem;
+  font-weight: 600;
+}
+
+.category-select-wrap {
+  position: relative;
+  color: var(--olive-900);
+}
+
+.category-select {
+  display: block;
+  width: 100%;
+  min-height: 50px;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 11px 16px 11px 46px;
+  border: 1px solid rgba(40,84,59,.2);
+  border-radius: 14px;
+  color: var(--olive-900);
+  background: linear-gradient(180deg, var(--olive-100), #e5eee1);
+  font: inherit;
+  font-weight: 700;
+  text-align: start;
+  cursor: pointer;
+}
+
+.category-select:focus-visible {
+  outline: 2px solid var(--brand-deep);
+  outline-offset: 3px;
+}
+
+.category-select-wrap > svg {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .catalog-search {

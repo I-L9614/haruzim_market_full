@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, ChevronDown } from 'lucide-react';
 
 function formatPrice(value) {
   return Number(value || 0).toFixed(2);
@@ -66,19 +66,24 @@ export default function Catalog({
         {searchQuery && <button type="button" onClick={() => setSearchQuery('')} aria-label="ניקוי החיפוש"><X size={16} /></button>}
       </label>
 
-      <div className="category-strip">
-        <button className={activeCategory === 'all' ? 'chip active' : 'chip'} onClick={() => setActiveCategory('all')}>
-          הכול
-        </button>
-        {categories.map((category) => (
-          <button
-            key={category._id}
-            className={activeCategory === String(category._id) ? 'chip active' : 'chip'}
-            onClick={() => setActiveCategory(String(category._id))}
+      <div className="category-filter">
+        <label htmlFor="catalog-category">קטגוריה</label>
+        <div className="category-select-wrap">
+          <select
+            id="catalog-category"
+            className="category-select"
+            value={activeCategory}
+            onChange={(event) => setActiveCategory(event.target.value)}
           >
-            {category.name}
-          </button>
-        ))}
+            <option value="all">כל הקטגוריות</option>
+            {categories.map((category) => (
+              <option key={category._id} value={String(category._id)}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={20} aria-hidden="true" />
+        </div>
       </div>
 
       <div className="product-grid">
