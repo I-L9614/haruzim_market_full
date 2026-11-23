@@ -31,6 +31,15 @@ const defaultCustomer = {
 };
 
 function App() {
+  // Hide the floating shortcut while the footer is in view, so contact/rights stay clear.
+  const [footerVisible, setFooterVisible] = useState(false);
+  useEffect(() => {
+    const footer = document.querySelector('.il-footer');
+    if (!footer || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(([entry]) => setFooterVisible(entry.isIntersecting));
+    observer.observe(footer);
+    return () => observer.disconnect();
+  }, []);
   const [products, setProducts] = useState([]);
   const [featuredProduct, setFeaturedProduct] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -548,7 +557,12 @@ function App() {
 
       </section>
 
-      <button className="cart-fab" type="button" onClick={() => document.getElementById('cart-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+<footer className="il-footer" aria-label="זכויות וקרדיט לפיתוח">
+  <div className="il-footer__rights"><b>© 2026 חרוזים מרקט</b><br />כל הזכויות בתוכן שמורות לבעלי האתר.</div>
+  <div className="il-footer__links"><a className="il-footer__privacy" href="/privacy.html">מדיניות פרטיות</a><div className="il-footer__brand"><img src="/itamar-levi-symbol.svg" alt="" width="43" height="48" /><div><small>פיתוח האתר</small><strong>איתמר לוי</strong></div></div><span className="il-footer__dot" aria-hidden="true"></span><a className="il-footer__phone" href="tel:+972559479614" aria-label="התקשרות למפתח, איתמר לוי, 055-947-9614">055-947-9614</a></div>
+  
+</footer>
+      <button hidden={footerVisible} className="cart-fab" type="button" onClick={() => document.getElementById('cart-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
         🛒 לעגלה · {cartTotal.toFixed(2)}₪
       </button>
 

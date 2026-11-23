@@ -920,3 +920,8 @@ textarea { resize: vertical; }
   .product-card .qty-stepper .qty-unit { font-size: .62rem; }
   .product-card .add-btn { width: 100%; min-height: 42px; padding: 0 6px; font-size: .82rem; border-radius: 9px; }
 }
+
+/* Footer sits above mobile cart shortcut and retains native text sizing. */
+@media(max-width:680px){.il-footer{margin-bottom:80px}}
+
+.cart-fab[hidden]{display:none!important}
